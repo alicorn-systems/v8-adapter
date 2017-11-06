@@ -1,5 +1,5 @@
 # V8 Java Adapter
-This project is an add-on for the excellent [J2V8 Project](https://github.com/eclipsesource/J2V8) that adds support for easily sharing Java classes and Java objects with a V8 runtime.
+This project is an add-on for the excellent [J2V8 Project](https://github.com/eclipsesource/J2V8), allowing users to easily share Java classes and objects with a V8 runtime.
 
 ## Getting The V8 Java Adapter
 ***NOTICE: The public Maven repository for this adapter is NOT fully configured yet, so the example dependency inclusions will not work; instead, manually clone this repo and install the Maven project locally.***.
