@@ -29,9 +29,6 @@
 
         <!-- Platform-specific versions. -->
         <j2v8-version>[4.5.0,)</j2v8-version>
-
-        <!-- SCM configuration in settings.xml -->
-        <project.scm.id>github-scm</project.scm.id>
     </properties>
 
     <dependencies>
@@ -45,7 +42,7 @@
 
     <!-- Release Information -->
     <scm>
-        <url>https://github.com/alicorn-systems/v8-adapter</url>
+        <url>scm:git:git@github.com/alicorn-systems/v8-adapter.git</url>
         <connection>scm:git:git@github.com:alicorn-systems/v8-adapter.git</connection>
         <developerConnection>scm:git:git@github.com:alicorn-systems/v8-adapter.git</developerConnection>
     </scm>
