@@ -70,3 +70,8 @@ Below is an example of injecting an ***instance*** of the Java BitSet class into
         // Prints out "{0, 2, 4}".
         System.out.println(v8.executeStringScript("b.toString();"));
     }
+
+## Licensing and Contributing
+This project is licensed under the BSD 3-Clause License, chosen for its inherent patent and trademark protection as well as its clear language. If enough/any issues are filed regarding this license choice (a departure from Apache V2 or the Eclipse Public License used by the J2V8 project), we will change the license to suit popular opinion.
+
+Please feel free to contribute any pull requests, feature requests, or issues that you notice to this project; we want it to be the best it can be!
