@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.alicorn.v8</groupId>
-    <artifactId>j2v8-adapter</artifactId>
+    <artifactId>v8-adapter</artifactId>
     <version>1.0-SNAPSHOT</version>
 
     <organization>
