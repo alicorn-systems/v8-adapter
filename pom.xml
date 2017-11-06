@@ -13,8 +13,8 @@
         <url>http://alicorn.io</url>
     </organization>
 
-    <name>J2V8 Adapter</name>
-    <url>https://github.com/alicorn-systems/j2v8-adapter</url>
+    <name>V8 Adapter</name>
+    <url>https://github.com/alicorn-systems/v8-adapter</url>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
