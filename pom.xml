@@ -4,15 +4,32 @@
 
     <groupId>io.alicorn.v8</groupId>
     <artifactId>v8-adapter</artifactId>
-    <version>1.1-SNAPSHOT</version>
+    <version>1.0-SNAPSHOT</version>
 
+    <!-- Metadata -->
     <organization>
         <name>Alicorn Systems</name>
         <url>http://alicorn.io</url>
     </organization>
-
     <name>V8 Adapter</name>
     <url>https://github.com/alicorn-systems/v8-adapter</url>
+    <description>Adapter for sharing Java classes and objects with a V8 runtime.</description>
+    <licenses>
+      <license>
+        <name>BSD 3-Clause Clear</name>
+        <url>https://choosealicense.com/licenses/bsd-3-clause-clear/</url>
+        <distribution>repo</distribution>
+      </license>
+    </licenses>
+    <developers>
+        <developer>
+            <name>Brandon Sanders</name>
+            <email>brandon@alicorn.io</email>
+            <url>http://alicorn.io/brandon</url>
+            <organization>Alicorn Systems</organization>
+            <organizationUrl>http://alicorn.io</organizationUrl>
+        </developer>
+    </developers>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -43,7 +60,6 @@
         <url>scm:git:git@github.com/alicorn-systems/v8-adapter.git</url>
         <connection>scm:git:git@github.com:alicorn-systems/v8-adapter.git</connection>
         <developerConnection>scm:git:git@github.com:alicorn-systems/v8-adapter.git</developerConnection>
-      <tag>HEAD</tag>
   </scm>
     <build>
         <plugins>
@@ -83,6 +99,29 @@
             <!-- Sonatype Build Process -->
             <build>
                 <plugins>
+                    <!-- Sonatype sources and javadocs. -->
+                    <plugin>
+                      <artifactId>maven-source-plugin</artifactId>
+                      <executions>
+                        <execution>
+                          <id>attach-sources</id>
+                          <phase>deploy</phase>
+                          <goals><goal>jar-no-fork</goal></goals> 
+                        </execution>
+                      </executions>
+                    </plugin>
+                    
+                    <plugin> 
+                      <artifactId>maven-javadoc-plugin</artifactId> 
+                      <executions> 
+                        <execution> 
+                          <id>attach-javadocs</id>
+                          <phase>deploy</phase>
+                          <goals><goal>jar</goal></goals> 
+                        </execution> 
+                      </executions> 
+                    </plugin>
+                
                     <!-- Sonatype Staging -->
                     <plugin>
                         <groupId>org.sonatype.plugins</groupId>
