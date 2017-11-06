@@ -1,10 +1,6 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.V8;
-import io.alicorn.v8.V8JavaAdapter;
-import io.alicorn.v8.V8JavaClassInterceptor;
-import io.alicorn.v8.V8JavaClassInterceptorContext;
-import io.alicorn.v8.V8JavaObjectUtils;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
