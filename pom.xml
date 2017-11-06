@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.alicorn.v8</groupId>
+    <artifactId>j2v8-adapter</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <organization>
+        <name>Alicorn Systems</name>
+        <url>http://alicorn.io</url>
+    </organization>
+
+    <name>J2V8 Adapter</name>
+    <url>https://github.com/alicorn-systems/j2v8-adapter</url>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Target 1.6 to support Android and embedded systems. -->
+        <maven.compiler.source>1.6</maven.compiler.source>
+        <maven.compiler.target>1.6</maven.compiler.target>
+
+        <!-- Datestamp -->
+        <datestamp>${maven.build.timestamp}</datestamp>
+        <maven.build.timestamp.format>yyyyMMdd</maven.build.timestamp.format>
+
+        <!-- Platform-specific versions. -->
+        <j2v8-version>[4.5.0,)</j2v8-version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.12</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- OS specific profiles -->
+    <profiles>
+        <!-- Windows -->
+        <profile>
+            <id>windows</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>com.eclipsesource.j2v8</groupId>
+                    <artifactId>j2v8_win32_x86_64</artifactId>
+                    <version>${j2v8-version}</version>
+                    <optional>true</optional>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <!-- Linux -->
+        <profile>
+            <id>linux</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <os>
+                    <family>unix</family>
+                    <name>!mac os x</name>
+                </os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>com.eclipsesource.j2v8</groupId>
+                    <artifactId>j2v8_linux_x86_64</artifactId>
+                    <version>${j2v8-version}</version>
+                    <optional>true</optional>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <!-- Mac OS X -->
+        <profile>
+            <id>mac</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>com.eclipsesource.j2v8</groupId>
+                    <artifactId>j2v8_macosx_x86_64</artifactId>
+                    <version>${j2v8-version}</version>
+                    <optional>true</optional>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+</project>
