@@ -26,7 +26,7 @@ An example `<dependencies>` section for a project that uses J2V8 on Linux would 
         </dependency>
     </dependencies>
 
-## Using The J2V8 Java Adapter
+## Using The V8 Java Adapter
 Once you have the adapter included, the only class you need to use is the `V8JavaAdapter` class. This class enables you to inject Java objects and classes into the V8 runtime.
 
 Below is a brief example of injecting the Java [BitSet](https://docs.oracle.com/javase/7/docs/api/java/util/BitSet.html) class:
