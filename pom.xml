@@ -4,7 +4,7 @@
 
     <groupId>io.alicorn.v8</groupId>
     <artifactId>v8-adapter</artifactId>
-    <version>1.1</version>
+    <version>1.2-SNAPSHOT</version>
 
     <!-- Metadata -->
     <organization>
@@ -60,7 +60,7 @@
         <url>scm:git:git@github.com/alicorn-systems/v8-adapter.git</url>
         <connection>scm:git:git@github.com:alicorn-systems/v8-adapter.git</connection>
         <developerConnection>scm:git:git@github.com:alicorn-systems/v8-adapter.git</developerConnection>
-    <tag>v8-adapter-1.1</tag>
+    <tag>HEAD</tag>
   </scm>
     <build>
         <plugins>
