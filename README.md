@@ -2,8 +2,6 @@
 This project is an add-on for the excellent [J2V8 Project](https://github.com/eclipsesource/J2V8), allowing users to easily share Java classes and objects with a V8 runtime.
 
 ## Getting The V8 Java Adapter
-***NOTICE: The public Maven repository for this adapter is NOT fully configured yet, so the example dependency inclusions will not work; instead, manually clone this repo and install the Maven project locally.***.
-
 As this project is built on top of the J2V8 project, you will need to include two dependencies in your pom.xml:
 
 1. A dependency for your preferred J2V8 artifact (e.g., `j2v8_macosx_x86_64` or `j2v8_win32_x86_64`).
@@ -15,8 +13,8 @@ An example `<dependencies>` section for a project that uses J2V8 on Linux would 
         <!-- J2V8 Adapter -->
         <dependency>
             <groupId>io.alicorn.v8</groupId>
-            <artifactId>j2v8-adapter</artifactId>
-            <version>1.0</version>
+            <artifactId>v8-adapter</artifactId>
+            <version>1.1</version>
 
         <!-- J2V8 Runtime -->
         <dependency>
