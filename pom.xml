@@ -41,6 +41,9 @@
     </dependencies>
 
     <!-- Release Information -->
+    <properties>
+      <project.scm.id>github-scm<project.scm.id>
+    </properties>
     <scm>
         <url>https://github.com/alicorn-systems/v8-adapter</url>
         <connection>scm:git:git@github.com:alicorn-systems/v8-adapter.git</connection>
