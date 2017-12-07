@@ -72,7 +72,9 @@ Below is an example of injecting an ***instance*** of the Java BitSet class into
 ## Roadmap
 This project is production-ready and is already in use in the [Alicorn](http://alicorn.io) framework. However, there are still features to be added and optimizations to be made! Below is a list that contains some of the things we are either planning to add or in the process of adding (feel free to suggest additions to this list or make pull requests that address items on this list):
 
-- JSR 223 (Scripting for the Java Platform) support
+- Basic JSR 223 (Scripting for the Java Platform) support.
+
+- Ability to retrieve functional interface implementations from the V8 context.
 
 ## Licensing and Contributing
 This project is licensed under the BSD 3-Clause License, chosen for its inherent patent and trademark protection as well as its clear language. If enough/any issues are filed regarding this license choice (a departure from Apache V2 or the Eclipse Public License used by the J2V8 project), we will change the license to suit popular opinion.
