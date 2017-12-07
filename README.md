@@ -14,7 +14,7 @@ An example `<dependencies>` section for a project that uses J2V8 on Linux would 
         <dependency>
             <groupId>io.alicorn.v8</groupId>
             <artifactId>v8-adapter</artifactId>
-            <version>1.1</version>
+            <version>1.21</version>
 
         <!-- J2V8 Runtime -->
         <dependency>
@@ -72,8 +72,7 @@ Below is an example of injecting an ***instance*** of the Java BitSet class into
 ## Roadmap
 This project is production-ready and is already in use in the [Alicorn](http://alicorn.io) framework. However, there are still features to be added and optimizations to be made! Below is a list that contains some of the things we are either planning to add or in the process of adding (feel free to suggest additions to this list or make pull requests that address items on this list):
 
-- Basic JSR 223 (Scripting for the Java Platform) support.
-
+- Advanced JSR 223 (Scripting for the Java Platform) support.
 - Ability to retrieve functional interface implementations from the V8 context.
 
 ## Licensing and Contributing
