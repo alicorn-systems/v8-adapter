@@ -43,7 +43,7 @@
         <maven.build.timestamp.format>yyyyMMdd</maven.build.timestamp.format>
 
         <!-- Platform-specific versions. -->
-        <j2v8-version>[4.5.0,)</j2v8-version>
+        <j2v8-version>[4.8.2,)</j2v8-version>
     </properties>
 
     <dependencies>

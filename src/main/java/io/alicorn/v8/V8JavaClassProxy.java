@@ -31,6 +31,12 @@ final class V8JavaClassProxy implements JavaCallback {
     private final Map<String, V8JavaStaticMethodProxy> staticMethods = new HashMap<String, V8JavaStaticMethodProxy>();
     private final Map<String, V8JavaInstanceMethodProxy> instanceMethods = new HashMap<String, V8JavaInstanceMethodProxy>();
 
+    // Getters and setters owned by this proxy.
+    // These overlap with the methods defined above.
+    private final List<String> gettersAndSettersList = new ArrayList<String>();
+    private final Map<String, V8JavaInstanceMethodProxy> gettersMap = new HashMap<String, V8JavaInstanceMethodProxy>();
+    private final Map<String, V8JavaInstanceMethodProxy> settersMap = new HashMap<String, V8JavaInstanceMethodProxy>();
+
     //Instances of this proxy created from JS. Used to control garbage collection.
 //    private final List<Object> jsObjects = new ArrayList<Object>(); {
 //        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
@@ -63,11 +69,16 @@ final class V8JavaClassProxy implements JavaCallback {
         // TODO: Do we want to cache methods from non-final classes to reduce
         //       the memory footprint of multiple classes with a common base?
 
+        // Keep track of getters and setters so we can register them at the end.
+        List<V8JavaInstanceMethodProxy> gettersAndSetters = new ArrayList<V8JavaInstanceMethodProxy>();
+
         // Get all public methods for the given class.
         for (Method m : classy.getMethods()) {
             // We want to ignore any methods from the base object class for now since that
             // will take up excess memory for potentially unused features.
             if (!m.getDeclaringClass().equals(Object.class)) {
+
+                // Register method.
                 if (Modifier.isStatic(m.getModifiers())) {
                     if (staticMethods.containsKey(m.getName())) {
                         staticMethods.get(m.getName()).addMethodSignature(m);
@@ -84,6 +95,44 @@ final class V8JavaClassProxy implements JavaCallback {
                         methodProxy.addMethodSignature(m);
                         instanceMethods.put(m.getName(), methodProxy);
                     }
+
+                    // Determine if it's a getter or setter.
+                    // TODO: Should this logic also process annotations?
+                    if (m.getName().startsWith("get") || m.getName().startsWith("set")) {
+                        gettersAndSetters.add(instanceMethods.get(m.getName()));
+                    }
+                }
+            }
+        }
+
+        // Register all getters and setters.
+        // TODO: Consider adding support for getter/setter generation being optional in order to reduce memory overhead?
+        for (V8JavaInstanceMethodProxy method : gettersAndSetters) {
+            // Disallow the special edge case where the method name is literally "get" or "set".
+            if (method.getMethodName().equals("get") || method.getMethodName().equals("set")) {
+                // TODO: This behavior could be modified to instead dynamically search for
+                //       a property that's missing or undefined via the get/set functions.
+                continue;
+            } else {
+
+                // Generate a new name with "get" or "set" removed.
+                String name = method.getMethodName().substring(3);
+
+                // Convert potential upper camel case to lower camel case.
+                name = name.substring(0, 1).toLowerCase() + name.substring(1);
+
+                // Add the method to the list if it isn't already there.
+                if (!gettersAndSettersList.contains(name)) {
+                    gettersAndSettersList.add(name);
+                }
+
+                // Add the method as a getter/
+                if (method.getMethodName().startsWith("get")) {
+                    gettersMap.put(name, method);
+
+                // Add the method as a setter.
+                } else if (method.getMethodName().startsWith("set")) {
+                    settersMap.put(name, method);
                 }
             }
         }
@@ -223,8 +272,36 @@ final class V8JavaClassProxy implements JavaCallback {
         if (javaObject.getClass().equals(classy)) {
             // Register its methods as properties on itself if it doesn't have an interceptor.
             if (interceptor == null) {
+
+                // Register methods.
                 for (String m : instanceMethods.keySet()) {
                     jsObject.registerJavaMethod(instanceMethods.get(m).getCallbackForInstance(javaObject), m);
+                }
+
+                // Register properties (getters and setters).
+                for (String method : gettersAndSettersList) {
+
+                    // Create a new JS object.
+                    V8Object methodProperty = V8JavaObjectUtils.getRuntimeSarcastically(jsObject).executeObjectScript("new Object();");
+
+                    // Insert getter (if available).
+                    if (gettersMap.containsKey(method)) {
+                        methodProperty.registerJavaMethod(gettersMap.get(method).getCallbackForInstance(javaObject), "get");
+                    }
+
+                    // Insert setter (if available).
+                    if (settersMap.containsKey(method)) {
+                        methodProperty.registerJavaMethod(settersMap.get(method).getCallbackForInstance(javaObject), "set");
+                    }
+
+                    // Define property on JS object.
+                    V8Object object = V8JavaObjectUtils.getRuntimeSarcastically(jsObject).getObject("Object");
+                    V8Object ret = (V8Object) object.executeJSFunction("defineProperty", jsObject, method, methodProperty);
+
+                    // Release garbage.
+                    object.release();
+                    ret.release();
+                    methodProperty.release();
                 }
 
             // Otherwise, register the interceptor's callback information.

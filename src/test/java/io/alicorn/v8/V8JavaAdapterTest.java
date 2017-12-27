@@ -61,6 +61,28 @@ public class V8JavaAdapterTest {
         public void setI(int i) { this.i = i; }
     }
 
+    private static final class WannabeBean {
+        public int i = 0;
+        public int j = 0;
+        public WannabeBean() {}
+        public int getI() { return i / 2; }
+        public void setI(int value) { i = value; }
+        public int getJ() { return j; }
+        public void setJ(int value) { j = value * 2; }
+    }
+
+    private static final class IncompleteBeanOne {
+        public int i = 0;
+        public IncompleteBeanOne() { }
+        public int getI() { return 3344; }
+    }
+
+    private static final class IncompleteBeanTwo {
+        public int j = 0;
+        public IncompleteBeanTwo() { }
+        public void setJ(int value) { j = value; }
+    }
+
     private static final class FooInterceptor implements V8JavaClassInterceptor<InterceptableFoo> {
 
         @Override public String getConstructorScriptBody() {
@@ -204,5 +226,18 @@ public class V8JavaAdapterTest {
             V8JavaAdapter.getCacheForRuntime(v8).removeGarbageCollectedJavaObjects();
             System.gc();
         }
+    }
+
+    @Test
+    public void shouldGeneratePropertiesForGettersAndSetters() {
+        V8JavaAdapter.injectClass(WannabeBean.class, v8);
+        Assert.assertEquals(3344, v8.executeIntegerScript("var x = new WannabeBean(); x.i = 6688; x.i;"));
+        Assert.assertEquals(6688, v8.executeIntegerScript("var x = new WannabeBean(); x.j = 3344; x.j;"));
+    }
+
+    @Test
+    public void shouldInjectAsymmetricGettersAndSetters() {
+        V8JavaAdapter.injectClass(IncompleteBeanOne.class, v8);
+        V8JavaAdapter.injectClass(IncompleteBeanTwo.class, v8);
     }
 }

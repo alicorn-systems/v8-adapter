@@ -88,7 +88,12 @@ public final class V8JavaAdapter {
         V8JavaClassProxy proxy = cache.cachedV8JavaClasses.get(object.getClass());
         StringBuilder script = new StringBuilder();
         script.append("var ").append(name).append(" = new function() {");
-        if (proxy.getInterceptor() != null) script.append(proxy.getInterceptor().getConstructorScriptBody());
+
+        // Attach interceptor.
+        if (proxy.getInterceptor() != null) {
+            script.append(proxy.getInterceptor().getConstructorScriptBody());
+        }
+
         script.append("\n}; ").append(name).append(";");
 
         V8Object other = V8JavaObjectUtils.getRuntimeSarcastically(rootObject).executeObjectScript(script.toString());
@@ -137,6 +142,7 @@ public final class V8JavaAdapter {
             script.append("this.").append(name).append(" = function() {");
             script.append("v8ConstructJavaClass").append(v8FriendlyClassname).append(".apply(this, arguments);");
 
+            // Attach interceptor.
             if (proxy.getInterceptor() != null) {
                 script.append(proxy.getInterceptor().getConstructorScriptBody());
             }
