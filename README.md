@@ -14,7 +14,7 @@ An example `<dependencies>` section for a project that uses J2V8 on Linux would 
         <dependency>
             <groupId>io.alicorn.v8</groupId>
             <artifactId>v8-adapter</artifactId>
-            <version>1.21</version>
+            <version>1.30</version>
 
         <!-- J2V8 Runtime -->
         <dependency>
@@ -32,7 +32,7 @@ Below is a brief example of injecting the Java [BitSet](https://docs.oracle.com/
     public static void main(String[] args) {
 
         // Create the V8 runtime.
-        v8 = V8.createV8Runtime();
+        V8 v8 = V8.createV8Runtime();
 
         // Inject the Bit Set class into the V8 runtime.
         V8JavaAdapter.injectClass(BitSet.class, v8);
@@ -52,7 +52,7 @@ Below is an example of injecting an ***instance*** of the Java BitSet class into
     public static void main(String[] args) {
 
         // Create the V8 runtime.
-        v8 = V8.createV8Runtime();
+        V8 v8 = V8.createV8Runtime();
 
         // Create a Bit Set in Java and manipulate it.
         BitSet javaBitSet = new BitSet(8);
