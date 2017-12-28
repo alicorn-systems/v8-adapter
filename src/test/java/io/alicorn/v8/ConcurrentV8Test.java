@@ -1,9 +1,6 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.V8;
-import io.alicorn.v8.ConcurrentV8;
-import io.alicorn.v8.ConcurrentV8Runnable;
-import io.alicorn.v8.V8JavaAdapter;
 import org.junit.Assert;
 import org.junit.Test;
 
