@@ -1,6 +1,10 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.V8;
+import com.eclipsesource.v8.V8Function;
+import com.eclipsesource.v8.V8Object;
+import io.alicorn.v8.annotations.JSGetter;
+import io.alicorn.v8.annotations.JSSetter;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -61,10 +65,10 @@ public class V8JavaAdapterTest {
         public void setI(int i) { this.i = i; }
     }
 
-    private static final class WannabeBean {
+    private abstract static class WannabeBeanBase {
         public int i = 0;
         public int j = 0;
-        public WannabeBean() {}
+        public WannabeBeanBase() {}
         public int getI() { return i / 2; }
         public void setI(int value) { i = value; }
         public int getJ() { return j; }
@@ -72,17 +76,44 @@ public class V8JavaAdapterTest {
         public boolean isFullySetUp() { return i != 0 && j != 0; }
     }
 
+    private static final class WannabeBean extends WannabeBeanBase {
+        public WannabeBean() {}
+        @JSGetter @Override public int getI() { return super.getI(); }
+        @JSSetter @Override public void setI(int value) { super.setI(value); }
+        @JSGetter @Override public int getJ() { return super.getJ(); }
+        @JSSetter @Override public void setJ(int value) { super.setJ(value); }
+        @JSGetter @Override public boolean isFullySetUp() { return super.isFullySetUp(); }
+    }
+
+    private static final class WannabeBeanNoAnnotations extends WannabeBeanBase {
+        public WannabeBeanNoAnnotations() {}
+        @Override public int getI() { return super.getI(); }
+        @Override public void setI(int value) { super.setI(value); }
+        @Override public int getJ() { return super.getJ(); }
+        @Override public void setJ(int value) { super.setJ(value); }
+        @Override public boolean isFullySetUp() { return super.isFullySetUp(); }
+    }
+
+    private static final class NotBean {
+        public NotBean() {}
+        public int i = 0;
+        public int j = 0;
+        @JSGetter public int incrementI() { return ++i; }
+        @JSSetter public int decrementj() { return --j; }
+    }
+
+
     private static final class IncompleteBeanOne {
         public int i = 0;
         public IncompleteBeanOne() { }
-        public int getI() { return 3344; }
+        @JSGetter public int getI() { return 3344; }
     }
 
     private static final class IncompleteBeanTwo {
         public int j = 0;
         public IncompleteBeanTwo() { }
-        public void setJ(int value) { j = value; }
-        public int getDecoratedJ() { return j; }
+        @JSSetter public void setJ(int value) { j = value; }
+        @JSGetter public int getDecoratedJ() { return j; }
     }
 
     private static final class FooInterceptor implements V8JavaClassInterceptor<InterceptableFoo> {
@@ -231,7 +262,7 @@ public class V8JavaAdapterTest {
     }
 
     @Test
-    public void shouldGeneratePropertiesForGettersAndSetters() {
+    public void shouldGeneratePropertiesForGettersAndSettersWithAnnotations() {
         final String readBooleanGetterScript = "x.fullySetUp;";
         V8JavaAdapter.injectClass(WannabeBean.class, v8);
 
@@ -240,6 +271,41 @@ public class V8JavaAdapterTest {
 
         Assert.assertEquals(6688, v8.executeIntegerScript("x.j = 3344; x.j;"));
         Assert.assertTrue(v8.executeBooleanScript(readBooleanGetterScript));
+    }
+
+    @Test
+    public void shouldNotGeneratePropertiesForGettersAndSettersWithoutAnnotations() {
+        final String readBooleanGetterScript = "x.fullySetUp;";
+        V8JavaAdapter.injectClass(WannabeBeanNoAnnotations.class, v8);
+
+        Assert.assertNotEquals(3344, v8.executeIntegerScript("var x = new WannabeBeanNoAnnotations(); x.i = 6688; x.i;"));
+        Assert.assertEquals(V8.getUndefined(), v8.executeScript(readBooleanGetterScript));
+
+        Assert.assertNotEquals(6688, v8.executeIntegerScript("x.j = 3344; x.j;"));
+        Assert.assertEquals(V8.getUndefined(), v8.executeScript(readBooleanGetterScript));
+    }
+
+    @Test
+    public void shouldIgnoreAnnotationsWhenNoGettersAndSettersByConvention() {
+        V8JavaAdapter.injectClass(NotBean.class, v8);
+        v8.executeScript("var x = new NotBean();");
+
+        Assert.assertEquals(1, v8.executeIntegerScript("x.incrementI();"));
+
+        final V8Object jsIncFunction = v8.executeObjectScript("x.incrementI;");
+        Assert.assertTrue(jsIncFunction instanceof V8Function);
+        jsIncFunction.release();
+
+        Assert.assertEquals(2, v8.executeIntegerScript("x.incrementI();"));
+
+
+        Assert.assertEquals(-1, v8.executeIntegerScript("x.decrementj();"));
+
+        final V8Object jsDecFunction = v8.executeObjectScript("x.decrementj;");
+        Assert.assertTrue(jsDecFunction instanceof V8Function);
+        jsDecFunction.release();
+
+        Assert.assertEquals(-2, v8.executeIntegerScript("x.decrementj();"));
     }
 
     @Test

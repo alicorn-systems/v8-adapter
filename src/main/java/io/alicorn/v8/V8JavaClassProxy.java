@@ -1,7 +1,10 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.*;
+import io.alicorn.v8.annotations.JSGetter;
+import io.alicorn.v8.annotations.JSSetter;
 
+import java.lang.annotation.Annotation;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -110,17 +113,17 @@ final class V8JavaClassProxy implements JavaCallback {
         final String isGetterPrefix = "is";
         final String setterPrefix = "set";
 
-        final String getterPropertyName = findJsPropertyName(methodProxy, getterPrefix);
+        final String getterPropertyName = findJsPropertyName(methodProxy, getterPrefix, JSGetter.class);
         if (getterPropertyName != null) {
             // Add the method as a getter
             gettersMap.put(getterPropertyName, methodProxy);
         } else {
-            final String isGetterPropertyName = findJsPropertyName(methodProxy, isGetterPrefix);
+            final String isGetterPropertyName = findJsPropertyName(methodProxy, isGetterPrefix, JSGetter.class);
             if (isGetterPropertyName != null) {
                 // Add the method as a "is" getter (for boolean)
                 gettersMap.put(isGetterPropertyName, methodProxy);
             } else {
-                final String setterPropertyName = findJsPropertyName(methodProxy, setterPrefix);
+                final String setterPropertyName = findJsPropertyName(methodProxy, setterPrefix, JSSetter.class);
                 if (setterPropertyName != null) {
                     // Add the method as a setter
                     settersMap.put(setterPropertyName, methodProxy);
@@ -132,8 +135,16 @@ final class V8JavaClassProxy implements JavaCallback {
     /**
      * @return JS property name with given getter/setter prefix if method is matching signature or null otherwise.
      */
-    private String findJsPropertyName(V8JavaInstanceMethodProxy methodProxy, String propertyPrefix) {
+    private String findJsPropertyName(V8JavaInstanceMethodProxy methodProxy, String propertyPrefix, Class<? extends Annotation> annotation) {
         final String methodName = methodProxy.getMethodName();
+
+        boolean hasAnnotation = false;
+        for (Method method : methodProxy.getMethodSignatures()) {
+            if (method.isAnnotationPresent(annotation)) {
+                hasAnnotation = true;
+            }
+        }
+        if (!hasAnnotation) return null;
 
         final int prefixLength = propertyPrefix.length();
         if (methodName.startsWith(propertyPrefix) && methodName.length() > prefixLength) {
