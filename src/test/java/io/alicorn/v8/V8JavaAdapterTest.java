@@ -69,6 +69,7 @@ public class V8JavaAdapterTest {
         public void setI(int value) { i = value; }
         public int getJ() { return j; }
         public void setJ(int value) { j = value * 2; }
+        public boolean isFullySetUp() { return i != 0 && j != 0; }
     }
 
     private static final class IncompleteBeanOne {
@@ -230,9 +231,14 @@ public class V8JavaAdapterTest {
 
     @Test
     public void shouldGeneratePropertiesForGettersAndSetters() {
+        final String readBooleanGetterScript = "x.fullySetUp;";
         V8JavaAdapter.injectClass(WannabeBean.class, v8);
+
         Assert.assertEquals(3344, v8.executeIntegerScript("var x = new WannabeBean(); x.i = 6688; x.i;"));
-        Assert.assertEquals(6688, v8.executeIntegerScript("var x = new WannabeBean(); x.j = 3344; x.j;"));
+        Assert.assertFalse(v8.executeBooleanScript(readBooleanGetterScript));
+
+        Assert.assertEquals(6688, v8.executeIntegerScript("x.j = 3344; x.j;"));
+        Assert.assertTrue(v8.executeBooleanScript(readBooleanGetterScript));
     }
 
     @Test
