@@ -282,7 +282,7 @@ final class V8JavaClassProxy implements JavaCallback {
                 for (String method : gettersAndSettersList) {
 
                     // Create a new JS object.
-                    V8Object methodProperty = V8JavaObjectUtils.getRuntimeSarcastically(jsObject).executeObjectScript("new Object();");
+                    V8Object methodProperty = new V8Object(jsObject.getRuntime());
 
                     // Insert getter (if available).
                     if (gettersMap.containsKey(method)) {
