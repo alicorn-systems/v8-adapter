@@ -82,6 +82,7 @@ public class V8JavaAdapterTest {
         public int j = 0;
         public IncompleteBeanTwo() { }
         public void setJ(int value) { j = value; }
+        public int getDecoratedJ() { return j; }
     }
 
     private static final class FooInterceptor implements V8JavaClassInterceptor<InterceptableFoo> {
@@ -244,6 +245,21 @@ public class V8JavaAdapterTest {
     @Test
     public void shouldInjectAsymmetricGettersAndSetters() {
         V8JavaAdapter.injectClass(IncompleteBeanOne.class, v8);
+        Assert.assertEquals(3344, v8.executeIntegerScript("var x = new IncompleteBeanOne(); x.i;"));
+
         V8JavaAdapter.injectClass(IncompleteBeanTwo.class, v8);
+        Assert.assertEquals(6688, v8.executeIntegerScript("var x = new IncompleteBeanTwo(); x.j = 6688; x.decoratedJ;"));
+    }
+
+    @Test
+    public void shouldInjectAsymmetricGettersAndIgnoreNewValueAssigment() {
+        V8JavaAdapter.injectClass(IncompleteBeanOne.class, v8);
+        Assert.assertEquals(3344, v8.executeIntegerScript("var x = new IncompleteBeanOne(); x.i = 'new_value'; x.i;"));
+    }
+
+    @Test
+    public void shouldInjectAsymmetricSettersAndGetterUndefined() {
+        V8JavaAdapter.injectClass(IncompleteBeanTwo.class, v8);
+        Assert.assertEquals(V8.getUndefined(), v8.executeScript("var x = new IncompleteBeanTwo(); x.j = 6688; x.j;"));
     }
 }
