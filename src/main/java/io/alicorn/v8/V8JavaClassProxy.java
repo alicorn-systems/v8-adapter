@@ -107,6 +107,9 @@ final class V8JavaClassProxy implements JavaCallback {
     // TODO: Consider adding support for getter/setter generation being optional in order to reduce memory overhead?
     /**
      * Keep track of getters and setters so we can register them later in {@link #registerGetterAndSetterProperties}
+     *
+     * @param methodProxy method to check whether it's getter/setter annotated @JSGetter/@JSSetter
+     *                    and thus need to be later "exported" as JS getter/setter property.
      */
     private void tracktGettersAndSetters(V8JavaInstanceMethodProxy methodProxy) {
         final String getterPrefix = "get";
@@ -134,6 +137,10 @@ final class V8JavaClassProxy implements JavaCallback {
 
     /**
      * @return JS property name with given getter/setter prefix if method is matching signature or null otherwise.
+     * @param methodProxy method to check whether it's getter/setter annotated @JSGetter/@JSSetter
+     *                    and thus need to be later "exported" as JS getter/setter property.
+     * @param propertyPrefix prefix, which is expected be on the method in order to treat it as Java getter/setter.
+     * @param annotation annotation, which is expected be on the method in order to "export" it later as JS getter/setter.
      */
     private String findJsPropertyName(V8JavaInstanceMethodProxy methodProxy, String propertyPrefix, Class<? extends Annotation> annotation) {
         final String methodName = methodProxy.getMethodName();
@@ -156,6 +163,11 @@ final class V8JavaClassProxy implements JavaCallback {
         }
     }
 
+    /**
+     * @param propertyName string, which might have 1st Character in uppercase.
+     *
+     * @return same string with 1st Character in lowercase if it was not.
+     */
     private String lower1stChar(String propertyName) {
         if (Character.isUpperCase(propertyName.charAt(0))) {
             propertyName = Character.toLowerCase(propertyName.charAt(0)) + propertyName.substring(1);
@@ -346,6 +358,14 @@ final class V8JavaClassProxy implements JavaCallback {
         }
     }
 
+    /**
+     * Registers properties in the given JS object based on the annotated Java object's getters/setters.
+     *
+     * List of getters and setters is already build in the {@link #tracktGettersAndSetters(V8JavaInstanceMethodProxy)}
+     *
+     * @param javaObject java object, which is "injected" in JS. Required for re-direction of the property access to it's getters/setters.
+     * @param jsObject JS object, created for dispatching calls from JS runtime to initial java object.
+     */
     private void registerGetterAndSetterProperties(Object javaObject, V8Object jsObject) {
         final Set<String> gettersAndSetters = new HashSet<String>();
         gettersAndSetters.addAll(gettersMap.keySet());
