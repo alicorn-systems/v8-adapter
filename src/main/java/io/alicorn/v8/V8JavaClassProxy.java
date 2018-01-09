@@ -71,7 +71,6 @@ final class V8JavaClassProxy implements JavaCallback {
         // TODO: Do we want to cache methods from non-final classes to reduce
         //       the memory footprint of multiple classes with a common base?
 
-
         // Get all public methods for the given class.
         for (Method m : classy.getMethods()) {
             // We want to ignore any methods from the base object class for now since that
@@ -96,38 +95,43 @@ final class V8JavaClassProxy implements JavaCallback {
                         methodProxy.addMethodSignature(m);
                         instanceMethods.put(methodName, methodProxy);
 
-                        tracktGettersAndSetters(methodProxy);
+                        // Register any getters and setters on the method.
+                        registerGettersAndSetters(methodProxy);
                     }
                 }
             }
         }
     }
 
-    // TODO: Should this logic also process annotations?
-    // TODO: Consider adding support for getter/setter generation being optional in order to reduce memory overhead?
     /**
-     * Keep track of getters and setters so we can register them later in {@link #registerGetterAndSetterProperties}
+     * Scans a method for getter/setter annotations or naming patterns, storing any detected getters and setters
+     * for later injection via {@link #injectGetterAndSetterProperties(Object, V8Object)}
      *
-     * @param methodProxy method to check whether it's getter/setter annotated @JSGetter/@JSSetter
-     *                    and thus need to be later "exported" as JS getter/setter property.
+     * TODO: Consider adding support for getter/setter generation being optional in order to reduce memory overhead?
+     *
+     * @param methodProxy Method to scan for getter/setter naming or {@link JSGetter}
+     *                    and {@link @JSSetter} annotations.
      */
-    private void tracktGettersAndSetters(V8JavaInstanceMethodProxy methodProxy) {
+    private void registerGettersAndSetters(V8JavaInstanceMethodProxy methodProxy) {
         final String getterPrefix = "get";
         final String isGetterPrefix = "is";
         final String setterPrefix = "set";
 
-        final String getterPropertyName = findJsPropertyName(methodProxy, getterPrefix, JSGetter.class);
+        final String getterPropertyName = parseJsGetterSetterPropertyName(methodProxy, getterPrefix, JSGetter.class);
         if (getterPropertyName != null) {
+
             // Add the method as a getter
             gettersMap.put(getterPropertyName, methodProxy);
         } else {
-            final String isGetterPropertyName = findJsPropertyName(methodProxy, isGetterPrefix, JSGetter.class);
+            final String isGetterPropertyName = parseJsGetterSetterPropertyName(methodProxy, isGetterPrefix, JSGetter.class);
             if (isGetterPropertyName != null) {
+
                 // Add the method as a "is" getter (for boolean)
                 gettersMap.put(isGetterPropertyName, methodProxy);
             } else {
-                final String setterPropertyName = findJsPropertyName(methodProxy, setterPrefix, JSSetter.class);
+                final String setterPropertyName = parseJsGetterSetterPropertyName(methodProxy, setterPrefix, JSSetter.class);
                 if (setterPropertyName != null) {
+
                     // Add the method as a setter
                     settersMap.put(setterPropertyName, methodProxy);
                 }
@@ -136,13 +140,19 @@ final class V8JavaClassProxy implements JavaCallback {
     }
 
     /**
-     * @return JS property name with given getter/setter prefix if method is matching signature or null otherwise.
-     * @param methodProxy method to check whether it's getter/setter annotated @JSGetter/@JSSetter
+     * Attempts to parse a getter or setter property from a Java method.
+     *
+     * @param methodProxy Method to check whether it's getter/setter annotated @JSGetter/@JSSetter
      *                    and thus need to be later "exported" as JS getter/setter property.
-     * @param propertyPrefix prefix, which is expected be on the method in order to treat it as Java getter/setter.
-     * @param annotation annotation, which is expected be on the method in order to "export" it later as JS getter/setter.
+     * @param propertyPrefix Prefix which is expected be on the method in order to
+     *                       treat it as Java getter/setter.
+     * @param annotation Annotation which is expected be on the method in
+     *                   order to "export" it later as JS getter/setter.
+     *
+     * @return JS property name with given getter/setter prefix if method
+     *         is matching signature or null otherwise.
      */
-    private String findJsPropertyName(V8JavaInstanceMethodProxy methodProxy, String propertyPrefix, Class<? extends Annotation> annotation) {
+    private String parseJsGetterSetterPropertyName(V8JavaInstanceMethodProxy methodProxy, String propertyPrefix, Class<? extends Annotation> annotation) {
         final String methodName = methodProxy.getMethodName();
 
         boolean hasAnnotation = false;
@@ -151,28 +161,24 @@ final class V8JavaClassProxy implements JavaCallback {
                 hasAnnotation = true;
             }
         }
-        if (!hasAnnotation) return null;
+
+        if (!hasAnnotation) {
+            return null;
+        }
 
         final int prefixLength = propertyPrefix.length();
         if (methodName.startsWith(propertyPrefix) && methodName.length() > prefixLength) {
             String propertyName = methodName.substring(prefixLength);
 
-            return lower1stChar(propertyName);
+            // Convert the first character to lower case if it is not already lower case.
+            if (Character.isUpperCase(propertyName.charAt(0))) {
+                propertyName = Character.toLowerCase(propertyName.charAt(0)) + propertyName.substring(1);
+            }
+
+            return propertyName;
         } else {
             return null;
         }
-    }
-
-    /**
-     * @param propertyName string, which might have 1st Character in uppercase.
-     *
-     * @return same string with 1st Character in lowercase if it was not.
-     */
-    private String lower1stChar(String propertyName) {
-        if (Character.isUpperCase(propertyName.charAt(0))) {
-            propertyName = Character.toLowerCase(propertyName.charAt(0)) + propertyName.substring(1);
-        }
-        return propertyName;
     }
 
     /**
@@ -315,9 +321,10 @@ final class V8JavaClassProxy implements JavaCallback {
                     jsObject.registerJavaMethod(instanceMethods.get(m).getCallbackForInstance(javaObject), m);
                 }
 
-                registerGetterAndSetterProperties(javaObject, jsObject);
+                // Inject any getter/setter properties.
+                injectGetterAndSetterProperties(javaObject, jsObject);
 
-            // Otherwise, register the interceptor's callback information.
+                // Otherwise, register the interceptor's callback information.
             } else {
                 String interceptorAddress = "CICHID" + UUID.randomUUID().toString().replaceAll("-", "");
                 jsObject.add(V8JavaObjectUtils.JAVA_CLASS_INTERCEPTOR_CONTEXT_HANDLE_ID, interceptorAddress);
@@ -359,14 +366,17 @@ final class V8JavaClassProxy implements JavaCallback {
     }
 
     /**
-     * Registers properties in the given JS object based on the annotated Java object's getters/setters.
+     * Injects getter and setter properties into the given JS object.
      *
-     * List of getters and setters is already build in the {@link #tracktGettersAndSetters(V8JavaInstanceMethodProxy)}
+     * The getters and setters that are injected are based on prior invocations of
+     * {@link #registerGettersAndSetters(V8JavaInstanceMethodProxy)}.
      *
-     * @param javaObject java object, which is "injected" in JS. Required for re-direction of the property access to it's getters/setters.
-     * @param jsObject JS object, created for dispatching calls from JS runtime to initial java object.
+     * @param javaObject Java object which is "injected" in JS. Required for
+     *                   re-direction of the property access to it's getters/setters.
+     * @param jsObject JS object created for dispatching calls from JS runtime to
+     *                 initial java object.
      */
-    private void registerGetterAndSetterProperties(Object javaObject, V8Object jsObject) {
+    private void injectGetterAndSetterProperties(Object javaObject, V8Object jsObject) {
         final Set<String> gettersAndSetters = new HashSet<String>();
         gettersAndSetters.addAll(gettersMap.keySet());
         gettersAndSetters.addAll(settersMap.keySet());

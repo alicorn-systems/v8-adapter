@@ -7,7 +7,7 @@ import java.lang.annotation.*;
  *
  * @author Alex Trotsenko [alexey.trotsenko@gmail.com]
  *
- * @see io.alicorn.v8.V8JavaClassProxy#registerGetterAndSetterProperties
+ * @see io.alicorn.v8.V8JavaClassProxy#registerGettersAndSetters(V8JavaInstanceMethodProxy)
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
