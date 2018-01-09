@@ -6,8 +6,8 @@ As this project is built on top of the J2V8 project, you will need to include tw
 
 1. A dependency for your preferred J2V8 artifact (e.g., `j2v8_macosx_x86_64` or `j2v8_win32_x86_64`).
 2. This project.
-
-An example `<dependencies>` section for a project that uses J2V8 on Linux would look like this:
+### using Maven
+An example `<dependencies>` section for a project that uses J2V8 on _Linux_ would look like this:
 
     <dependencies>
         <!-- J2V8 Adapter -->
@@ -23,6 +23,15 @@ An example `<dependencies>` section for a project that uses J2V8 on Linux would 
             <version>4.5.0</version>
         </dependency>
     </dependencies>
+### Using Gradle    
+An example `dependencies` section for a project that uses J2V8 on _Android_ would look like this:
+
+    dependencies {
+        // J2V8 Adapter
+        compile 'io.alicorn.v8:v8-adapter:1.21'
+        // J2V8 Runtime
+        compile 'com.eclipsesource.j2v8:j2v8:4.8.0@aar'
+    }
 
 ## Using The V8 Java Adapter
 Once you have the adapter included, the only class you need to use is the `V8JavaAdapter` class. This class enables you to inject Java objects and classes into the V8 runtime.

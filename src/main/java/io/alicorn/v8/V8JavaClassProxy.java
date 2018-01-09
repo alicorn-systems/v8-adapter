@@ -1,7 +1,10 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.*;
+import io.alicorn.v8.annotations.JSGetter;
+import io.alicorn.v8.annotations.JSSetter;
 
+import java.lang.annotation.Annotation;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -33,7 +36,6 @@ final class V8JavaClassProxy implements JavaCallback {
 
     // Getters and setters owned by this proxy.
     // These overlap with the methods defined above.
-    private final List<String> gettersAndSettersList = new ArrayList<String>();
     private final Map<String, V8JavaInstanceMethodProxy> gettersMap = new HashMap<String, V8JavaInstanceMethodProxy>();
     private final Map<String, V8JavaInstanceMethodProxy> settersMap = new HashMap<String, V8JavaInstanceMethodProxy>();
 
@@ -69,73 +71,108 @@ final class V8JavaClassProxy implements JavaCallback {
         // TODO: Do we want to cache methods from non-final classes to reduce
         //       the memory footprint of multiple classes with a common base?
 
-        // Keep track of getters and setters so we can register them at the end.
-        List<V8JavaInstanceMethodProxy> gettersAndSetters = new ArrayList<V8JavaInstanceMethodProxy>();
 
         // Get all public methods for the given class.
         for (Method m : classy.getMethods()) {
             // We want to ignore any methods from the base object class for now since that
             // will take up excess memory for potentially unused features.
             if (!m.getDeclaringClass().equals(Object.class)) {
+                final String methodName = m.getName();
 
                 // Register method.
                 if (Modifier.isStatic(m.getModifiers())) {
-                    if (staticMethods.containsKey(m.getName())) {
-                        staticMethods.get(m.getName()).addMethodSignature(m);
+                    if (staticMethods.containsKey(methodName)) {
+                        staticMethods.get(methodName).addMethodSignature(m);
                     } else {
-                        V8JavaStaticMethodProxy methodProxy = new V8JavaStaticMethodProxy(m.getName(), cache);
+                        V8JavaStaticMethodProxy methodProxy = new V8JavaStaticMethodProxy(methodName, cache);
                         methodProxy.addMethodSignature(m);
-                        staticMethods.put(m.getName(), methodProxy);
+                        staticMethods.put(methodName, methodProxy);
                     }
                 } else {
-                    if (instanceMethods.containsKey(m.getName())) {
-                        instanceMethods.get(m.getName()).addMethodSignature(m);
+                    if (instanceMethods.containsKey(methodName)) {
+                        instanceMethods.get(methodName).addMethodSignature(m);
                     } else {
-                        V8JavaInstanceMethodProxy methodProxy = new V8JavaInstanceMethodProxy(m.getName(), cache);
+                        V8JavaInstanceMethodProxy methodProxy = new V8JavaInstanceMethodProxy(methodName, cache);
                         methodProxy.addMethodSignature(m);
-                        instanceMethods.put(m.getName(), methodProxy);
-                    }
+                        instanceMethods.put(methodName, methodProxy);
 
-                    // Determine if it's a getter or setter.
-                    // TODO: Should this logic also process annotations?
-                    if (m.getName().startsWith("get") || m.getName().startsWith("set")) {
-                        gettersAndSetters.add(instanceMethods.get(m.getName()));
+                        tracktGettersAndSetters(methodProxy);
                     }
                 }
             }
         }
+    }
 
-        // Register all getters and setters.
-        // TODO: Consider adding support for getter/setter generation being optional in order to reduce memory overhead?
-        for (V8JavaInstanceMethodProxy method : gettersAndSetters) {
-            // Disallow the special edge case where the method name is literally "get" or "set".
-            if (method.getMethodName().equals("get") || method.getMethodName().equals("set")) {
-                // TODO: This behavior could be modified to instead dynamically search for
-                //       a property that's missing or undefined via the get/set functions.
-                continue;
+    // TODO: Should this logic also process annotations?
+    // TODO: Consider adding support for getter/setter generation being optional in order to reduce memory overhead?
+    /**
+     * Keep track of getters and setters so we can register them later in {@link #registerGetterAndSetterProperties}
+     *
+     * @param methodProxy method to check whether it's getter/setter annotated @JSGetter/@JSSetter
+     *                    and thus need to be later "exported" as JS getter/setter property.
+     */
+    private void tracktGettersAndSetters(V8JavaInstanceMethodProxy methodProxy) {
+        final String getterPrefix = "get";
+        final String isGetterPrefix = "is";
+        final String setterPrefix = "set";
+
+        final String getterPropertyName = findJsPropertyName(methodProxy, getterPrefix, JSGetter.class);
+        if (getterPropertyName != null) {
+            // Add the method as a getter
+            gettersMap.put(getterPropertyName, methodProxy);
+        } else {
+            final String isGetterPropertyName = findJsPropertyName(methodProxy, isGetterPrefix, JSGetter.class);
+            if (isGetterPropertyName != null) {
+                // Add the method as a "is" getter (for boolean)
+                gettersMap.put(isGetterPropertyName, methodProxy);
             } else {
-
-                // Generate a new name with "get" or "set" removed.
-                String name = method.getMethodName().substring(3);
-
-                // Convert potential upper camel case to lower camel case.
-                name = name.substring(0, 1).toLowerCase() + name.substring(1);
-
-                // Add the method to the list if it isn't already there.
-                if (!gettersAndSettersList.contains(name)) {
-                    gettersAndSettersList.add(name);
-                }
-
-                // Add the method as a getter/
-                if (method.getMethodName().startsWith("get")) {
-                    gettersMap.put(name, method);
-
-                // Add the method as a setter.
-                } else if (method.getMethodName().startsWith("set")) {
-                    settersMap.put(name, method);
+                final String setterPropertyName = findJsPropertyName(methodProxy, setterPrefix, JSSetter.class);
+                if (setterPropertyName != null) {
+                    // Add the method as a setter
+                    settersMap.put(setterPropertyName, methodProxy);
                 }
             }
         }
+    }
+
+    /**
+     * @return JS property name with given getter/setter prefix if method is matching signature or null otherwise.
+     * @param methodProxy method to check whether it's getter/setter annotated @JSGetter/@JSSetter
+     *                    and thus need to be later "exported" as JS getter/setter property.
+     * @param propertyPrefix prefix, which is expected be on the method in order to treat it as Java getter/setter.
+     * @param annotation annotation, which is expected be on the method in order to "export" it later as JS getter/setter.
+     */
+    private String findJsPropertyName(V8JavaInstanceMethodProxy methodProxy, String propertyPrefix, Class<? extends Annotation> annotation) {
+        final String methodName = methodProxy.getMethodName();
+
+        boolean hasAnnotation = false;
+        for (Method method : methodProxy.getMethodSignatures()) {
+            if (method.isAnnotationPresent(annotation)) {
+                hasAnnotation = true;
+            }
+        }
+        if (!hasAnnotation) return null;
+
+        final int prefixLength = propertyPrefix.length();
+        if (methodName.startsWith(propertyPrefix) && methodName.length() > prefixLength) {
+            String propertyName = methodName.substring(prefixLength);
+
+            return lower1stChar(propertyName);
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * @param propertyName string, which might have 1st Character in uppercase.
+     *
+     * @return same string with 1st Character in lowercase if it was not.
+     */
+    private String lower1stChar(String propertyName) {
+        if (Character.isUpperCase(propertyName.charAt(0))) {
+            propertyName = Character.toLowerCase(propertyName.charAt(0)) + propertyName.substring(1);
+        }
+        return propertyName;
     }
 
     /**
@@ -278,31 +315,7 @@ final class V8JavaClassProxy implements JavaCallback {
                     jsObject.registerJavaMethod(instanceMethods.get(m).getCallbackForInstance(javaObject), m);
                 }
 
-                // Register properties (getters and setters).
-                for (String method : gettersAndSettersList) {
-
-                    // Create a new JS object.
-                    V8Object methodProperty = V8JavaObjectUtils.getRuntimeSarcastically(jsObject).executeObjectScript("new Object();");
-
-                    // Insert getter (if available).
-                    if (gettersMap.containsKey(method)) {
-                        methodProperty.registerJavaMethod(gettersMap.get(method).getCallbackForInstance(javaObject), "get");
-                    }
-
-                    // Insert setter (if available).
-                    if (settersMap.containsKey(method)) {
-                        methodProperty.registerJavaMethod(settersMap.get(method).getCallbackForInstance(javaObject), "set");
-                    }
-
-                    // Define property on JS object.
-                    V8Object object = V8JavaObjectUtils.getRuntimeSarcastically(jsObject).getObject("Object");
-                    V8Object ret = (V8Object) object.executeJSFunction("defineProperty", jsObject, method, methodProperty);
-
-                    // Release garbage.
-                    object.release();
-                    ret.release();
-                    methodProperty.release();
-                }
+                registerGetterAndSetterProperties(javaObject, jsObject);
 
             // Otherwise, register the interceptor's callback information.
             } else {
@@ -342,6 +355,46 @@ final class V8JavaClassProxy implements JavaCallback {
         } else {
             throw new IllegalArgumentException(String.format("Cannot attach Java object of type [%s] using proxy for type [%s]",
                                                              javaObject.getClass().getName(), classy.getName()));
+        }
+    }
+
+    /**
+     * Registers properties in the given JS object based on the annotated Java object's getters/setters.
+     *
+     * List of getters and setters is already build in the {@link #tracktGettersAndSetters(V8JavaInstanceMethodProxy)}
+     *
+     * @param javaObject java object, which is "injected" in JS. Required for re-direction of the property access to it's getters/setters.
+     * @param jsObject JS object, created for dispatching calls from JS runtime to initial java object.
+     */
+    private void registerGetterAndSetterProperties(Object javaObject, V8Object jsObject) {
+        final Set<String> gettersAndSetters = new HashSet<String>();
+        gettersAndSetters.addAll(gettersMap.keySet());
+        gettersAndSetters.addAll(settersMap.keySet());
+
+        // Register properties (getters and setters).
+        for (String methodName : gettersAndSetters) {
+
+            // Create a new JS object.
+            V8Object methodProperty = new V8Object(jsObject.getRuntime());
+
+            // Insert getter (if available).
+            if (gettersMap.containsKey(methodName)) {
+                methodProperty.registerJavaMethod(gettersMap.get(methodName).getCallbackForInstance(javaObject), "get");
+            }
+
+            // Insert setter (if available).
+            if (settersMap.containsKey(methodName)) {
+                methodProperty.registerJavaMethod(settersMap.get(methodName).getCallbackForInstance(javaObject), "set");
+            }
+
+            // Define property on JS object.
+            V8Object object = V8JavaObjectUtils.getRuntimeSarcastically(jsObject).getObject("Object");
+            V8Object ret = (V8Object) object.executeJSFunction("defineProperty", jsObject, methodName, methodProperty);
+
+            // Release garbage.
+            object.release();
+            ret.release();
+            methodProperty.release();
         }
     }
 
