@@ -6,7 +6,8 @@ As this project is built on top of the J2V8 project, you will need to include tw
 
 1. A dependency for your preferred J2V8 artifact (e.g., `j2v8_macosx_x86_64` or `j2v8_win32_x86_64`).
 2. This project.
-### using Maven
+
+### Using Maven
 An example `<dependencies>` section for a project that uses J2V8 on _Linux_ would look like this:
 
     <dependencies>
@@ -23,12 +24,14 @@ An example `<dependencies>` section for a project that uses J2V8 on _Linux_ woul
             <version>4.5.0</version>
         </dependency>
     </dependencies>
+    
 ### Using Gradle    
 An example `dependencies` section for a project that uses J2V8 on _Android_ would look like this:
 
     dependencies {
         // J2V8 Adapter
-        compile 'io.alicorn.v8:v8-adapter:1.21'
+        compile 'io.alicorn.v8:v8-adapter:1.30'
+        
         // J2V8 Runtime
         compile 'com.eclipsesource.j2v8:j2v8:4.8.0@aar'
     }
