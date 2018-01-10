@@ -12,7 +12,7 @@ import java.util.*;
 public final class V8JavaAdapter {
 
     // Mapping of V8 instances to their associated caches.
-    private static final Map<V8, V8JavaCache> runtimeToCacheMap = new HashMap<V8, V8JavaCache>();
+    private static final Map<V8, V8JavaCache> runtimeToCacheMap = new WeakHashMap<V8, V8JavaCache>();
 
     /**
      * Returns the {@link V8JavaCache} associated with a given runtime.
