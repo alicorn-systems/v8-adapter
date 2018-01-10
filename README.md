@@ -15,7 +15,7 @@ An example `<dependencies>` section for a project that uses J2V8 on _Linux_ woul
         <dependency>
             <groupId>io.alicorn.v8</groupId>
             <artifactId>v8-adapter</artifactId>
-            <version>1.30</version>
+            <version>1.41</version>
 
         <!-- J2V8 Runtime -->
         <dependency>
@@ -30,7 +30,7 @@ An example `dependencies` section for a project that uses J2V8 on _Android_ woul
 
     dependencies {
         // J2V8 Adapter
-        compile 'io.alicorn.v8:v8-adapter:1.30'
+        compile 'io.alicorn.v8:v8-adapter:1.41'
         
         // J2V8 Runtime
         compile 'com.eclipsesource.j2v8:j2v8:4.8.0@aar'
