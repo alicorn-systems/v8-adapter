@@ -3,16 +3,21 @@ package io.alicorn.v8;
 import com.eclipsesource.v8.V8;
 import com.eclipsesource.v8.V8Function;
 import com.eclipsesource.v8.V8Object;
+import com.eclipsesource.v8.V8ScriptExecutionException;
 import io.alicorn.v8.annotations.JSGetter;
+import io.alicorn.v8.annotations.JSNoAutoDetect;
 import io.alicorn.v8.annotations.JSSetter;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import io.alicorn.v8.annotations.JSStaticFunction;
+import org.hamcrest.core.StringContains;
+import org.junit.*;
+import org.junit.rules.ExpectedException;
 
 import java.util.Random;
 
 public class V8JavaAdapterTest {
+    @Rule
+    public ExpectedException thrown = ExpectedException.none();
+
 //Setup classes////////////////////////////////////////////////////////////////
     private interface Baz {
         Foo doFooInterface(Foo foo);
@@ -57,6 +62,14 @@ public class V8JavaAdapterTest {
         }
     }
 
+    @JSNoAutoDetect
+    private static final class FooNoAutoDetect {
+        @JSStaticFunction
+        public static int doStaticAnnotated() { return 9001; }
+
+        public static int doStaticNotAnnotated() { return 9001; }
+    }
+
     private static final class InterceptableFoo {
         public int i;
         public InterceptableFoo(int i) { this.i = i; }
@@ -76,7 +89,7 @@ public class V8JavaAdapterTest {
         public boolean isFullySetUp() { return i != 0 && j != 0; }
     }
 
-    private static final class WannabeBean extends WannabeBeanBase {
+    private static class WannabeBean extends WannabeBeanBase {
         public WannabeBean() {}
         @JSGetter @Override public int getI() { return super.getI(); }
         @JSSetter @Override public void setI(int value) { super.setI(value); }
@@ -85,7 +98,13 @@ public class V8JavaAdapterTest {
         @JSGetter @Override public boolean isFullySetUp() { return super.isFullySetUp(); }
     }
 
-    private static final class WannabeBeanNoAnnotations extends WannabeBeanBase {
+    @JSNoAutoDetect
+    private static final class WannabeBeanNoAutoDetect extends WannabeBean {
+        public WannabeBeanNoAutoDetect() {
+        }
+    }
+
+    private static class WannabeBeanNoAnnotations extends WannabeBeanBase {
         public WannabeBeanNoAnnotations() {}
         @Override public int getI() { return super.getI(); }
         @Override public void setI(int value) { super.setI(value); }
@@ -94,12 +113,37 @@ public class V8JavaAdapterTest {
         @Override public boolean isFullySetUp() { return super.isFullySetUp(); }
     }
 
-    private static final class NotBean {
+    @JSNoAutoDetect
+    private static final class WannabeBeanNoAnnotationsNoAutoDetect extends WannabeBeanNoAnnotations {
+        public WannabeBeanNoAnnotationsNoAutoDetect() {
+        }
+    }
+
+    private static class NotBean {
         public NotBean() {}
         public int i = 0;
         public int j = 0;
-        @JSGetter public int incrementI() { return ++i; }
-        @JSSetter public int decrementj() { return --j; }
+        public int incrementI() { return ++i; }
+        public int decrementj() { return --j; }
+
+    }
+
+    @JSNoAutoDetect
+    private static final class NotBeanNoAutoDetect extends NotBean {
+        public NotBeanNoAutoDetect() {
+        }
+    }
+
+    @JSNoAutoDetect
+    private static final class NotBeanAnnotatedNoAutoDetect extends NotBean {
+        public NotBeanAnnotatedNoAutoDetect() {}
+        @JSGetter public int incrementI() { return super.incrementI(); }
+        @JSSetter public void assignToj(int newJ) {
+            this.j = newJ;
+        }
+        @JSGetter public int sum() {
+            return i + j;
+        }
     }
 
 
@@ -188,6 +232,22 @@ public class V8JavaAdapterTest {
     }
 
     @Test
+    public void shouldHandleAnnotatedStaticInvocationsNoAutoDetect() {
+        V8JavaAdapter.injectClass(FooNoAutoDetect.class, v8);
+
+        Assert.assertEquals(9001, v8.executeIntegerScript("FooNoAutoDetect.doStaticAnnotated();"));
+    }
+
+    @Test
+    public void shouldNotHandleNotAnnotatedStaticInvocationsNoAutoDetect() {
+        V8JavaAdapter.injectClass(FooNoAutoDetect.class, v8);
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectMessage(StringContains.containsString("FooNoAutoDetect.doStaticNotAnnotated is not a function"));
+        v8.executeScript("FooNoAutoDetect.doStaticNotAnnotated();");
+    }
+
+    @Test
     public void shouldHandleInstanceInvocations() {
         Assert.assertEquals(3344, v8.executeIntegerScript("var x = new Foo(3300); x.doInstance(44);"));
         Assert.assertEquals(9000, v8.executeIntegerScript("var x = new Foo(3000); x.doInstance(3000, 2);"));
@@ -267,18 +327,42 @@ public class V8JavaAdapterTest {
         V8JavaAdapter.injectClass(WannabeBean.class, v8);
 
         Assert.assertEquals(3344, v8.executeIntegerScript("var x = new WannabeBean(); x.i = 6688; x.i;"));
-        Assert.assertFalse(v8.executeBooleanScript(readBooleanGetterScript));
+        Assert.assertEquals(false, v8.executeScript(readBooleanGetterScript));
 
         Assert.assertEquals(6688, v8.executeIntegerScript("x.j = 3344; x.j;"));
-        Assert.assertTrue(v8.executeBooleanScript(readBooleanGetterScript));
+        Assert.assertEquals(true, v8.executeBooleanScript(readBooleanGetterScript));
     }
 
     @Test
-    public void shouldNotGeneratePropertiesForGettersAndSettersWithoutAnnotations() {
+    public void shouldGeneratePropertiesForGettersAndSettersWithAnnotationsNoAutoDetect() {
+        final String readBooleanGetterScript = "x.fullySetUp;";
+        V8JavaAdapter.injectClass(WannabeBeanNoAutoDetect.class, v8);
+
+        Assert.assertEquals(3344, v8.executeIntegerScript("var x = new WannabeBeanNoAutoDetect(); x.i = 6688; x.i;"));
+        Assert.assertEquals(false, v8.executeScript(readBooleanGetterScript));
+
+        Assert.assertEquals(6688, v8.executeIntegerScript("x.j = 3344; x.j;"));
+        Assert.assertEquals(true, v8.executeBooleanScript(readBooleanGetterScript));
+    }
+
+    @Test
+    public void shouldGeneratePropertiesForGettersAndSettersWithoutAnnotations() {
         final String readBooleanGetterScript = "x.fullySetUp;";
         V8JavaAdapter.injectClass(WannabeBeanNoAnnotations.class, v8);
 
-        Assert.assertNotEquals(3344, v8.executeIntegerScript("var x = new WannabeBeanNoAnnotations(); x.i = 6688; x.i;"));
+        Assert.assertEquals(3344, v8.executeIntegerScript("var x = new WannabeBeanNoAnnotations(); x.i = 6688; x.i;"));
+        Assert.assertEquals(false, v8.executeScript(readBooleanGetterScript));
+
+        Assert.assertEquals(6688, v8.executeIntegerScript("x.j = 3344; x.j;"));
+        Assert.assertEquals(true, v8.executeBooleanScript(readBooleanGetterScript));
+    }
+
+    @Test
+    public void shouldNotGeneratePropertiesForGettersAndSettersWithoutAnnotationsNoAutoDetect() {
+        final String readBooleanGetterScript = "x.fullySetUp;";
+        V8JavaAdapter.injectClass(WannabeBeanNoAnnotationsNoAutoDetect.class, v8);
+
+        Assert.assertNotEquals(3344, v8.executeIntegerScript("var x = new WannabeBeanNoAnnotationsNoAutoDetect(); x.i = 6688; x.i;"));
         Assert.assertEquals(V8.getUndefined(), v8.executeScript(readBooleanGetterScript));
 
         Assert.assertNotEquals(6688, v8.executeIntegerScript("x.j = 3344; x.j;"));
@@ -286,7 +370,7 @@ public class V8JavaAdapterTest {
     }
 
     @Test
-    public void shouldIgnoreAnnotationsWhenNoGettersAndSettersByConvention() {
+    public void shouldNotGeneratePropertiesWhenNoGettersAndSettersByConvention() {
         V8JavaAdapter.injectClass(NotBean.class, v8);
         v8.executeScript("var x = new NotBean();");
 
@@ -306,6 +390,42 @@ public class V8JavaAdapterTest {
         jsDecFunction.release();
 
         Assert.assertEquals(-2, v8.executeIntegerScript("x.decrementj();"));
+    }
+
+    @Test
+    public void shouldGeneratePropertiesWhenNoGettersAndSettersByConventionWithAnnotationsNoAutoDetect() {
+        V8JavaAdapter.injectClass(NotBeanAnnotatedNoAutoDetect.class, v8);
+        v8.executeScript("var x = new NotBeanAnnotatedNoAutoDetect();");
+
+        final int expectedX = 1;
+        //test getter
+        Assert.assertEquals(expectedX, v8.executeScript("x.incrementI;"));
+
+        final int newJ = 3;
+        //test setter
+        v8.executeScript("x.assignToj = " + newJ + ";");
+
+        final int expectedSum = expectedX + newJ;
+        //test getter
+        Assert.assertEquals(expectedSum, v8.executeScript("x.sum;"));
+    }
+
+    @Test
+    public void shouldNotGenerateInstanceFunctionsWithoutAnnotationsNoAutoDetect() {
+        V8JavaAdapter.injectClass(NotBeanNoAutoDetect.class, v8);
+        v8.executeScript("var x = new NotBeanNoAutoDetect();");
+
+        final V8Object jsIncFunction = v8.executeObjectScript("x.incrementI;");
+        Assert.assertEquals(V8.getUndefined(), jsIncFunction);
+        jsIncFunction.release();
+
+        final V8Object jsDecFunction = v8.executeObjectScript("x.decrementj;");
+        Assert.assertEquals(V8.getUndefined(), jsDecFunction);
+        jsDecFunction.release();
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectMessage(StringContains.containsString("x.incrementI is not a function"));
+        v8.executeScript("x.incrementI();");
     }
 
     @Test

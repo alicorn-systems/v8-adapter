@@ -4,6 +4,7 @@ import java.lang.annotation.*;
 
 /**
  * An annotation that marks a Java method as JavaScript getter.
+ * When @JSNoAutoDetect is used on the class - it's required for exporting method to the JS runtime.
  *
  * @author Alex Trotsenko [alexey.trotsenko@gmail.com]
  */
