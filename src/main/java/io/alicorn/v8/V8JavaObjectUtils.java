@@ -200,6 +200,7 @@ public final class V8JavaObjectUtils {
      *
      * TODO: Surely there's a cleaner way to write this!
      *
+     * @param <T> Type of the class to convert to.
      * @param from Number to widen.
      * @param to Class to widen to.
      *
@@ -263,6 +264,10 @@ public final class V8JavaObjectUtils {
      * Android.
      *
      * TODO: Report upstream and stop using this dorky method.
+     *
+     * @param value V8Value to get a runtime from.
+     *
+     * @return The sarcastically obtained value.
      */
     public static final V8 getRuntimeSarcastically(V8Value value) {
         try {
