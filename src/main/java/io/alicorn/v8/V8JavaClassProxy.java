@@ -1,8 +1,7 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.*;
-import io.alicorn.v8.annotations.JSGetter;
-import io.alicorn.v8.annotations.JSSetter;
+import io.alicorn.v8.annotations.*;
 
 import java.lang.annotation.Annotation;
 import java.lang.ref.WeakReference;
@@ -19,6 +18,9 @@ import java.util.*;
  */
 final class V8JavaClassProxy implements JavaCallback {
 //Private//////////////////////////////////////////////////////////////////////
+    private final static String setterPrefix = "set";
+    private final static String getterPrefix = "get";
+    private final static String isGetterPrefix = "is";
 
     //Class represented by this proxy.
     private final Class<?> classy;
@@ -70,7 +72,9 @@ final class V8JavaClassProxy implements JavaCallback {
 
         // TODO: Do we want to cache methods from non-final classes to reduce
         //       the memory footprint of multiple classes with a common base?
+        // TODO: Consider adding support for getter/setter generation being optional in order to reduce memory overhead?
 
+        final boolean autoDetect = !classy.isAnnotationPresent(JSNoAutoDetect.class);
         // Get all public methods for the given class.
         for (Method m : classy.getMethods()) {
             // We want to ignore any methods from the base object class for now since that
@@ -80,105 +84,77 @@ final class V8JavaClassProxy implements JavaCallback {
 
                 // Register method.
                 if (Modifier.isStatic(m.getModifiers())) {
-                    if (staticMethods.containsKey(methodName)) {
-                        staticMethods.get(methodName).addMethodSignature(m);
-                    } else {
-                        V8JavaStaticMethodProxy methodProxy = new V8JavaStaticMethodProxy(methodName, cache);
-                        methodProxy.addMethodSignature(m);
-                        staticMethods.put(methodName, methodProxy);
+                    if ((autoDetect || isAnnotated(m, JSStaticFunction.class))) {
+                        if (staticMethods.containsKey(methodName)) {
+                            staticMethods.get(methodName).addMethodSignature(m);
+                        } else {
+                            V8JavaStaticMethodProxy methodProxy = new V8JavaStaticMethodProxy(methodName, cache);
+                            methodProxy.addMethodSignature(m);
+                            staticMethods.put(methodName, methodProxy);
+                        }
                     }
                 } else {
-                    if (instanceMethods.containsKey(methodName)) {
-                        instanceMethods.get(methodName).addMethodSignature(m);
-                    } else {
-                        V8JavaInstanceMethodProxy methodProxy = new V8JavaInstanceMethodProxy(methodName, cache);
-                        methodProxy.addMethodSignature(m);
-                        instanceMethods.put(methodName, methodProxy);
+                    if (autoDetect || isAnnotated(m, JSFunction.class)) {
+                        if (instanceMethods.containsKey(methodName)) {
+                            instanceMethods.get(methodName).addMethodSignature(m);
+                        } else {
+                            V8JavaInstanceMethodProxy methodProxy = newInstanceProxy(cache, m);
+                            instanceMethods.put(methodName, methodProxy);
+                        }
+                    }
 
-                        // Register any getters and setters on the method.
-                        registerGettersAndSetters(methodProxy);
+                    // Store any detected getters and setters for later injection via .injectGetterAndSetterProperties()
+                    if (autoDetect && hasPrefix(methodName, setterPrefix) || isAnnotated(m, JSSetter.class)) {
+                        final String setterPropertyName = getJsGetterSetterPropertyName(methodName, setterPrefix);
+                        settersMap.put(setterPropertyName, newInstanceProxy(cache, m));
+
+                    } else if (autoDetect && hasPrefix(methodName, getterPrefix, isGetterPrefix) || isAnnotated(m, JSGetter.class)) {
+                        final String getterPropertyName = getJsGetterSetterPropertyName(methodName, getterPrefix, isGetterPrefix);
+                        gettersMap.put(getterPropertyName, newInstanceProxy(cache, m));
                     }
                 }
             }
         }
     }
 
-    /**
-     * Scans a method for getter/setter annotations or naming patterns, storing any detected getters and setters
-     * for later injection via {@link #injectGetterAndSetterProperties(Object, V8Object)}
-     *
-     * TODO: Consider adding support for getter/setter generation being optional in order to reduce memory overhead?
-     *
-     * @param methodProxy Method to scan for getter/setter naming or {@link JSGetter}
-     *                    and {@link @JSSetter} annotations.
-     */
-    private void registerGettersAndSetters(V8JavaInstanceMethodProxy methodProxy) {
-        final String getterPrefix = "get";
-        final String isGetterPrefix = "is";
-        final String setterPrefix = "set";
+    private V8JavaInstanceMethodProxy newInstanceProxy(V8JavaCache cache, Method method) {
+        V8JavaInstanceMethodProxy methodProxy = new V8JavaInstanceMethodProxy(method.getName(), cache);
+        methodProxy.addMethodSignature(method);
 
-        final String getterPropertyName = parseJsGetterSetterPropertyName(methodProxy, getterPrefix, JSGetter.class);
-        if (getterPropertyName != null) {
-
-            // Add the method as a getter
-            gettersMap.put(getterPropertyName, methodProxy);
-        } else {
-            final String isGetterPropertyName = parseJsGetterSetterPropertyName(methodProxy, isGetterPrefix, JSGetter.class);
-            if (isGetterPropertyName != null) {
-
-                // Add the method as a "is" getter (for boolean)
-                gettersMap.put(isGetterPropertyName, methodProxy);
-            } else {
-                final String setterPropertyName = parseJsGetterSetterPropertyName(methodProxy, setterPrefix, JSSetter.class);
-                if (setterPropertyName != null) {
-
-                    // Add the method as a setter
-                    settersMap.put(setterPropertyName, methodProxy);
-                }
-            }
-        }
+        return methodProxy;
     }
 
-    /**
-     * Attempts to parse a getter or setter property from a Java method.
-     *
-     * @param methodProxy Method to check whether it's getter/setter annotated @JSGetter/@JSSetter
-     *                    and thus need to be later "exported" as JS getter/setter property.
-     * @param propertyPrefix Prefix which is expected be on the method in order to
-     *                       treat it as Java getter/setter.
-     * @param annotation Annotation which is expected be on the method in
-     *                   order to "export" it later as JS getter/setter.
-     *
-     * @return JS property name with given getter/setter prefix if method
-     *         is matching signature or null otherwise.
-     */
-    private String parseJsGetterSetterPropertyName(V8JavaInstanceMethodProxy methodProxy, String propertyPrefix, Class<? extends Annotation> annotation) {
-        final String methodName = methodProxy.getMethodName();
-
-        boolean hasAnnotation = false;
-        for (Method method : methodProxy.getMethodSignatures()) {
-            if (method.isAnnotationPresent(annotation)) {
-                hasAnnotation = true;
+    private String getJsGetterSetterPropertyName(String methodName, String... propertyPrefixes) {
+        String propertyName = methodName;
+        for (String propertyPrefix : propertyPrefixes) {
+            if (hasPrefix(methodName, propertyPrefix)) {
+                propertyName = methodName.substring(propertyPrefix.length());
+                break;
             }
         }
 
-        if (!hasAnnotation) {
-            return null;
+        // Convert the first character to lower case if it is not already lower case.
+        if (Character.isUpperCase(propertyName.charAt(0))) {
+            propertyName = Character.toLowerCase(propertyName.charAt(0)) + propertyName.substring(1);
         }
 
-        final int prefixLength = propertyPrefix.length();
-        if (methodName.startsWith(propertyPrefix) && methodName.length() > prefixLength) {
-            String propertyName = methodName.substring(prefixLength);
+        return propertyName;
+    }
 
-            // Convert the first character to lower case if it is not already lower case.
-            if (Character.isUpperCase(propertyName.charAt(0))) {
-                propertyName = Character.toLowerCase(propertyName.charAt(0)) + propertyName.substring(1);
-            }
+    private boolean hasPrefix(String methodName, String propertyPrefix) {
+        return methodName.startsWith(propertyPrefix) && methodName.length() > propertyPrefix.length();
+    }
 
-            return propertyName;
-        } else {
-            return null;
+    private boolean hasPrefix(String methodName, String... propertyPrefixes) {
+        for (String propertyPrefix : propertyPrefixes) {
+            if (hasPrefix(methodName, propertyPrefix)) return true;
         }
+
+        return false;
+    }
+
+    private boolean isAnnotated(Method m, Class<? extends Annotation> expectedAnnotationForExport) {
+        return m.isAnnotationPresent(expectedAnnotationForExport);
     }
 
     /**
