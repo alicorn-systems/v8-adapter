@@ -3,8 +3,11 @@ package io.alicorn.v8.annotations;
 import java.lang.annotation.*;
 
 /**
- * Using this annotation on the methods prevents it from being exported as function/property to JS runtime.
- * When @JSNoAutoDetect is used on the class - this function does nothing.
+ * Using this annotation on a method prevents it from being exported as
+ * a function/property to JS runtime.
+ *
+ * This annotation has no effect when the {@link JSDisableMethodAutodetect} annotation
+ * is present on a class.
  *
  * @author Alex Trotsenko [alexey.trotsenko@gmail.com]
  */

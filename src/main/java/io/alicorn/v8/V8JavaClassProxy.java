@@ -3,7 +3,6 @@ package io.alicorn.v8;
 import com.eclipsesource.v8.*;
 import io.alicorn.v8.annotations.*;
 
-import java.lang.annotation.Annotation;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -18,9 +17,11 @@ import java.util.*;
  */
 final class V8JavaClassProxy implements JavaCallback {
 //Private//////////////////////////////////////////////////////////////////////
-    private final static String setterPrefix = "set";
-    private final static String getterPrefix = "get";
-    private final static String isGetterPrefix = "is";
+
+    // Prefixes for Java beans property methods
+    private final static String BEAN_SETTER_PREFIX = "set";
+    private final static String BEAN_GETTER_PREFIX = "get";
+    private final static String BEAN_BOOLEAN_GETTER_PREFIX = "is";
 
     //Class represented by this proxy.
     private final Class<?> classy;
@@ -54,6 +55,63 @@ final class V8JavaClassProxy implements JavaCallback {
 //        }));
 //    }
 
+    /**
+     * Creates a new {@link V8JavaInstanceMethodProxy} for a given Java method.
+     *
+     * @param cache {@link V8JavaCache} to assign the proxy to.
+     * @param method Java method to proxy.
+     *
+     * @return A new {@link V8JavaInstanceMethodProxy} for the given Java method.
+     */
+    private static V8JavaInstanceMethodProxy newInstanceProxy(V8JavaCache cache, Method method) {
+        V8JavaInstanceMethodProxy methodProxy = new V8JavaInstanceMethodProxy(method.getName(), cache);
+        methodProxy.addMethodSignature(method);
+
+        return methodProxy;
+    }
+
+    /**
+     * Gets the equivalent Javascript property name based on the name of a Java method.
+     *
+     * TODO: This method is used only statically, so varargs is inappropriate and will
+     *       generate garbage during class injection. Optimize?
+     *
+     * @param methodName Java method name to get the equivalent Javascript property name of.
+     * @param propertyPrefixes Possible prefixes the Java method name can have.
+     *
+     * @return The equivalent Javascript property name based on the name of the Java method.
+     */
+    private static String getJsGetterSetterPropertyName(String methodName, String... propertyPrefixes) {
+
+        // Get the property name based on our prefixes.
+        String propertyName = methodName;
+        for (String propertyPrefix : propertyPrefixes) {
+            if (hasPrefix(methodName, propertyPrefix)) {
+                propertyName = methodName.substring(propertyPrefix.length());
+                break;
+            }
+        }
+
+        // Convert the first character to lower case if it is not already lower case.
+        if (Character.isUpperCase(propertyName.charAt(0))) {
+            propertyName = Character.toLowerCase(propertyName.charAt(0)) + propertyName.substring(1);
+        }
+
+        return propertyName;
+    }
+
+    /**
+     * Checks if a given Java method name has a prefix associated with a Bean-style getter or setter prefix.
+     *
+     * @param methodName Java method name to check the prefix of.
+     * @param propertyPrefix Prefix to check for.
+     *
+     * @return True if the Java method name has the given prefix, and false otherwise.
+     */
+    private static boolean hasPrefix(String methodName, String propertyPrefix) {
+        return methodName.length() > propertyPrefix.length() && methodName.startsWith(propertyPrefix);
+    }
+
 //Protected////////////////////////////////////////////////////////////////////
 
     /**
@@ -74,17 +132,21 @@ final class V8JavaClassProxy implements JavaCallback {
         //       the memory footprint of multiple classes with a common base?
         // TODO: Consider adding support for getter/setter generation being optional in order to reduce memory overhead?
 
-        final boolean autoDetect = !classy.isAnnotationPresent(JSNoAutoDetect.class);
+        // Disable auto-detection of methods if the class has the autodetect disable annotation.
+        final boolean autoDetect = !classy.isAnnotationPresent(JSDisableMethodAutodetect.class);
+
         // Get all public methods for the given class.
         for (Method m : classy.getMethods()) {
+
             // We want to ignore any methods from the base object class for now since that
             // will take up excess memory for potentially unused features.
             if (!m.getDeclaringClass().equals(Object.class)) {
                 final String methodName = m.getName();
 
                 // Register method.
+                // TODO: These if-elses seem like they could be cleaned up...
                 if (Modifier.isStatic(m.getModifiers())) {
-                    if ((autoDetect || isAnnotated(m, JSStaticFunction.class))) {
+                    if ((autoDetect || m.isAnnotationPresent(JSStaticFunction.class))) {
                         if (staticMethods.containsKey(methodName)) {
                             staticMethods.get(methodName).addMethodSignature(m);
                         } else {
@@ -94,7 +156,7 @@ final class V8JavaClassProxy implements JavaCallback {
                         }
                     }
                 } else {
-                    if (autoDetect || isAnnotated(m, JSFunction.class)) {
+                    if (autoDetect || m.isAnnotationPresent(JSFunction.class)) {
                         if (instanceMethods.containsKey(methodName)) {
                             instanceMethods.get(methodName).addMethodSignature(m);
                         } else {
@@ -104,57 +166,20 @@ final class V8JavaClassProxy implements JavaCallback {
                     }
 
                     // Store any detected getters and setters for later injection via .injectGetterAndSetterProperties()
-                    if (autoDetect && hasPrefix(methodName, setterPrefix) || isAnnotated(m, JSSetter.class)) {
-                        final String setterPropertyName = getJsGetterSetterPropertyName(methodName, setterPrefix);
+                    if (autoDetect && hasPrefix(methodName, BEAN_SETTER_PREFIX) || m.isAnnotationPresent(JSSetter.class)) {
+                        final String setterPropertyName = getJsGetterSetterPropertyName(methodName, BEAN_SETTER_PREFIX);
                         settersMap.put(setterPropertyName, newInstanceProxy(cache, m));
 
-                    } else if (autoDetect && hasPrefix(methodName, getterPrefix, isGetterPrefix) || isAnnotated(m, JSGetter.class)) {
-                        final String getterPropertyName = getJsGetterSetterPropertyName(methodName, getterPrefix, isGetterPrefix);
+                    } else if (autoDetect &&
+                              (hasPrefix(methodName, BEAN_GETTER_PREFIX) || hasPrefix(methodName, BEAN_BOOLEAN_GETTER_PREFIX)) ||
+                               m.isAnnotationPresent(JSGetter.class)) {
+                        final String getterPropertyName = getJsGetterSetterPropertyName(methodName, BEAN_GETTER_PREFIX,
+                                                                                        BEAN_BOOLEAN_GETTER_PREFIX);
                         gettersMap.put(getterPropertyName, newInstanceProxy(cache, m));
                     }
                 }
             }
         }
-    }
-
-    private V8JavaInstanceMethodProxy newInstanceProxy(V8JavaCache cache, Method method) {
-        V8JavaInstanceMethodProxy methodProxy = new V8JavaInstanceMethodProxy(method.getName(), cache);
-        methodProxy.addMethodSignature(method);
-
-        return methodProxy;
-    }
-
-    private String getJsGetterSetterPropertyName(String methodName, String... propertyPrefixes) {
-        String propertyName = methodName;
-        for (String propertyPrefix : propertyPrefixes) {
-            if (hasPrefix(methodName, propertyPrefix)) {
-                propertyName = methodName.substring(propertyPrefix.length());
-                break;
-            }
-        }
-
-        // Convert the first character to lower case if it is not already lower case.
-        if (Character.isUpperCase(propertyName.charAt(0))) {
-            propertyName = Character.toLowerCase(propertyName.charAt(0)) + propertyName.substring(1);
-        }
-
-        return propertyName;
-    }
-
-    private boolean hasPrefix(String methodName, String propertyPrefix) {
-        return methodName.startsWith(propertyPrefix) && methodName.length() > propertyPrefix.length();
-    }
-
-    private boolean hasPrefix(String methodName, String... propertyPrefixes) {
-        for (String propertyPrefix : propertyPrefixes) {
-            if (hasPrefix(methodName, propertyPrefix)) return true;
-        }
-
-        return false;
-    }
-
-    private boolean isAnnotated(Method m, Class<? extends Annotation> expectedAnnotationForExport) {
-        return m.isAnnotationPresent(expectedAnnotationForExport);
     }
 
     /**

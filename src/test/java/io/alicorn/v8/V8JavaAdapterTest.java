@@ -4,8 +4,8 @@ import com.eclipsesource.v8.V8;
 import com.eclipsesource.v8.V8Function;
 import com.eclipsesource.v8.V8Object;
 import com.eclipsesource.v8.V8ScriptExecutionException;
+import io.alicorn.v8.annotations.JSDisableMethodAutodetect;
 import io.alicorn.v8.annotations.JSGetter;
-import io.alicorn.v8.annotations.JSNoAutoDetect;
 import io.alicorn.v8.annotations.JSSetter;
 import io.alicorn.v8.annotations.JSStaticFunction;
 import org.hamcrest.core.StringContains;
@@ -15,9 +15,6 @@ import org.junit.rules.ExpectedException;
 import java.util.Random;
 
 public class V8JavaAdapterTest {
-    @Rule
-    public ExpectedException thrown = ExpectedException.none();
-
 //Setup classes////////////////////////////////////////////////////////////////
     private interface Baz {
         Foo doFooInterface(Foo foo);
@@ -62,7 +59,7 @@ public class V8JavaAdapterTest {
         }
     }
 
-    @JSNoAutoDetect
+    @JSDisableMethodAutodetect
     private static final class FooNoAutoDetect {
         @JSStaticFunction
         public static int doStaticAnnotated() { return 9001; }
@@ -98,7 +95,7 @@ public class V8JavaAdapterTest {
         @JSGetter @Override public boolean isFullySetUp() { return super.isFullySetUp(); }
     }
 
-    @JSNoAutoDetect
+    @JSDisableMethodAutodetect
     private static final class WannabeBeanNoAutoDetect extends WannabeBean {
         public WannabeBeanNoAutoDetect() {
         }
@@ -113,7 +110,7 @@ public class V8JavaAdapterTest {
         @Override public boolean isFullySetUp() { return super.isFullySetUp(); }
     }
 
-    @JSNoAutoDetect
+    @JSDisableMethodAutodetect
     private static final class WannabeBeanNoAnnotationsNoAutoDetect extends WannabeBeanNoAnnotations {
         public WannabeBeanNoAnnotationsNoAutoDetect() {
         }
@@ -128,13 +125,13 @@ public class V8JavaAdapterTest {
 
     }
 
-    @JSNoAutoDetect
+    @JSDisableMethodAutodetect
     private static final class NotBeanNoAutoDetect extends NotBean {
         public NotBeanNoAutoDetect() {
         }
     }
 
-    @JSNoAutoDetect
+    @JSDisableMethodAutodetect
     private static final class NotBeanAnnotatedNoAutoDetect extends NotBean {
         public NotBeanAnnotatedNoAutoDetect() {}
         @JSGetter public int incrementI() { return super.incrementI(); }
@@ -191,6 +188,9 @@ public class V8JavaAdapterTest {
 //Tests////////////////////////////////////////////////////////////////////////
 
     private V8 v8;
+
+    @Rule
+    public ExpectedException thrown = ExpectedException.none();
 
     @Before
     public void setup() {
