@@ -455,15 +455,17 @@ public final class V8JavaObjectUtils {
                 }
             } else if (argument instanceof V8Object) {
                 try {
-                    //Attempt to retrieve a Java object handle.
-                    String javaHandle = (String) ((V8Object) argument).get(JAVA_OBJECT_HANDLE_ID);
-                    Object javaObject = cache.identifierToJavaObjectMap.get(javaHandle).get();
+                    final V8Object argumentObject = (V8Object) argument;
 
-                    if (javaObject != null) {
+                    if (argumentObject.contains(JAVA_OBJECT_HANDLE_ID)) {
+                        //Attempt to retrieve a Java object handle.
+                        String javaHandle = (String) argumentObject.get(JAVA_OBJECT_HANDLE_ID);
+                        Object javaObject = cache.identifierToJavaObjectMap.get(javaHandle).get();
+
                         if (javaArgumentType.isAssignableFrom(javaObject.getClass())) {
                             // Check if it's intercepted.
                             cache.cachedV8JavaClasses.get(javaObject.getClass()).readInjectedInterceptor(
-                                    (V8Object) argument);
+                                    argumentObject);
                             return javaObject;
                         } else {
                             throw new IllegalArgumentException(
@@ -476,10 +478,10 @@ public final class V8JavaObjectUtils {
                     }
                 } catch (NullPointerException e) {
                     throw new IllegalArgumentException(
-                            "Argument has invalid Java object handle or object referenced by handle has aged out.");
+                            "Argument has invalid Java object handle or object referenced by handle has aged out.", e);
                 } catch (ClassCastException e) {
                     throw new IllegalArgumentException(
-                            "Complex objects can only be passed to Java if they represent Java objects.");
+                            "Complex objects can only be passed to Java if they represent Java objects.", e);
                 }
             } else {
                 //TODO: Add support for arrays.
