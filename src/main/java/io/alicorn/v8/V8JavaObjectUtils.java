@@ -411,10 +411,14 @@ public final class V8JavaObjectUtils {
     public static Object translateJavascriptArgumentToJava(Class<?> javaArgumentType, Type javaArgumentGenericType, Object argument, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
         if (argument instanceof V8Value) {
             if (argument instanceof V8Function) {
+                final V8Function v8ArgumentFunction = (V8Function) argument;
+
                 if (javaArgumentType.isInterface() && javaArgumentType.getDeclaredMethods().length == 1) {
                     //Create a proxy class for the functional interface that wraps this V8Function.
-                    V8FunctionInvocationHandler handler = new V8FunctionInvocationHandler(receiver, (V8Function) argument, cache);
+                    V8FunctionInvocationHandler handler = new V8FunctionInvocationHandler(receiver, v8ArgumentFunction, cache);
                     return Proxy.newProxyInstance(javaArgumentType.getClassLoader(), new Class[] { javaArgumentType }, handler);
+                } else if (V8Function.class == javaArgumentType) {
+                    return v8ArgumentFunction.twin();
                 } else {
                     throw new IllegalArgumentException(
                             "Method was passed V8Function but does not accept a functional interface.");

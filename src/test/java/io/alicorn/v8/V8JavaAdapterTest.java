@@ -1,6 +1,7 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.*;
+import com.eclipsesource.v8.utils.V8ObjectUtils;
 import io.alicorn.v8.annotations.JSDisableMethodAutodetect;
 import io.alicorn.v8.annotations.JSGetter;
 import io.alicorn.v8.annotations.JSSetter;
@@ -9,9 +10,11 @@ import org.hamcrest.core.StringContains;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class V8JavaAdapterTest {
 //Setup classes////////////////////////////////////////////////////////////////
@@ -206,6 +209,22 @@ public class V8JavaAdapterTest {
             }
 
             return ((Map) possibleMapWithYProperty).get(yKey);
+        }
+    }
+
+    private static final class NativeJsFunctionReader {
+        public NativeJsFunctionReader() {}
+
+        public void sumAndNotify(int left, int right, V8Function callBack) {
+            final int sum = left + right;
+            final List<Integer> callBackArg = Collections.singletonList(sum);
+
+            final V8 v8 = callBack.getRuntime();
+            final V8Array v8Args = V8ObjectUtils.toV8Array(v8, callBackArg);
+            callBack.call(v8, v8Args);
+
+            v8Args.release();
+            callBack.release();
         }
     }
 
@@ -571,5 +590,21 @@ public class V8JavaAdapterTest {
         V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
         final Integer nine = 9;
         Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsJavaObjectAndTryGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadFunctionAsV8Function() {
+        V8JavaAdapter.injectClass(NativeJsFunctionReader.class, v8);
+
+        final AtomicInteger sumContainer = new AtomicInteger();
+        V8JavaAdapter.injectObject("sumContainer", sumContainer, v8);
+
+        final int one = 1;
+        final int two = 2;
+        final int sum = one + two;
+
+        v8.executeScript("var x = new NativeJsFunctionReader(); var y = x.sumAndNotify(" + one + ", " + two + ", function(sum) { sumContainer.set(sum); } ); y;");
+
+        Assert.assertEquals(sum, sumContainer.get());
     }
 }
