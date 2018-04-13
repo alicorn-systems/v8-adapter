@@ -28,7 +28,7 @@ class V8JavaStaticMethodProxy extends V8JavaMethodProxy implements JavaCallback 
         Method coercedMethod = null;
         for (Method method : getMethodSignatures()) {
             try {
-                coercedArguments = V8JavaObjectUtils.translateJavascriptArgumentsToJava(method.isVarArgs(), method.getParameterTypes(), parameters, receiver, cache);
+                coercedArguments = V8JavaObjectUtils.translateJavascriptArgumentsToJava(method.isVarArgs(), method.getParameterTypes(), method.getGenericParameterTypes(), parameters, receiver, cache);
                 coercedMethod = method;
                 break;
             } catch (IllegalArgumentException e) {
