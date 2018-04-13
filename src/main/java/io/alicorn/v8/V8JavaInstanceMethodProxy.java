@@ -29,7 +29,7 @@ final class V8JavaInstanceMethodProxy extends V8JavaMethodProxy {
                 IllegalArgumentException argumentsMismatchException = null;
                 for (Method method : getMethodSignatures()) {
                     try {
-                        coercedArguments = V8JavaObjectUtils.translateJavascriptArgumentsToJava(method.isVarArgs(), method.getParameterTypes(), parameters, receiver, cache);
+                        coercedArguments = V8JavaObjectUtils.translateJavascriptArgumentsToJava(method.isVarArgs(), method.getParameterTypes(), method.getGenericParameterTypes(), parameters, receiver, cache);
                         coercedMethod = method;
                         break;
                     } catch (IllegalArgumentException e) {

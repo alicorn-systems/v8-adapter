@@ -1,9 +1,7 @@
 package io.alicorn.v8;
 
-import com.eclipsesource.v8.V8;
-import com.eclipsesource.v8.V8Function;
-import com.eclipsesource.v8.V8Object;
-import com.eclipsesource.v8.V8ScriptExecutionException;
+import com.eclipsesource.v8.*;
+import com.eclipsesource.v8.utils.V8ObjectUtils;
 import io.alicorn.v8.annotations.JSDisableMethodAutodetect;
 import io.alicorn.v8.annotations.JSGetter;
 import io.alicorn.v8.annotations.JSSetter;
@@ -12,8 +10,11 @@ import org.hamcrest.core.StringContains;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class V8JavaAdapterTest {
 //Setup classes////////////////////////////////////////////////////////////////
@@ -204,10 +205,63 @@ public class V8JavaAdapterTest {
 
         public Object readJsObjectAsJavaObjectAndTryGetY(Object possibleMapWithYProperty) {
             if (!(possibleMapWithYProperty instanceof Map)) {
-                throw new IllegalArgumentException("Can read from object, which is not map, but " + possibleMapWithYProperty);
+                throw new IllegalArgumentException("Can't read from object, which is not map, but " + possibleMapWithYProperty);
             }
 
             return ((Map) possibleMapWithYProperty).get(yKey);
+        }
+    }
+
+    private static final class NativeJsFunctionReader {
+        public NativeJsFunctionReader() {}
+
+        public void sumAndNotify(int left, int right, V8Function callBack) {
+            final int sum = left + right;
+            final List<Integer> callBackArg = Collections.singletonList(sum);
+
+            final V8 v8 = callBack.getRuntime();
+            final V8Array v8Args = V8ObjectUtils.toV8Array(v8, callBackArg);
+            callBack.call(v8, v8Args);
+
+            v8Args.release();
+            callBack.release();
+        }
+    }
+
+    private static final class NativeJsArrayReader {
+
+        private final int firstPostition = 0;
+
+        public NativeJsArrayReader() {}
+
+        public Object readJsArrayAsJavaArrayAndGet1st(Integer[] intsArray) {
+            return intsArray[firstPostition];
+        }
+
+        public Object readJsArrayAsJavaListAndGet1st(List<Integer> intsList) {
+            return intsList.get(firstPostition);
+        }
+
+        public Object readJsArrayAsJavaRawArrayAndGet1st(Object[] objectsArray) {
+            return objectsArray[firstPostition];
+        }
+
+        public Object readJsArrayAsRawJavaListAndGet1st(List objectsList) {
+            return objectsList.get(firstPostition);
+        }
+
+        public Object readJsArrayAsV8ArrayAndGet1st(V8Array array) {
+            final Object firstValue = array.get(firstPostition);
+            array.release();
+            return firstValue;
+        }
+
+        public Object readJsArrayAsJavaObjectAndTryGet1st(Object possibleList) {
+            if (!(possibleList instanceof List)) {
+                throw new IllegalArgumentException("Can't read from object, which is not list, but " + possibleList);
+            }
+
+            return ((List) possibleList).get(firstPostition);
         }
     }
 
@@ -494,5 +548,63 @@ public class V8JavaAdapterTest {
         V8JavaAdapter.injectClass(NativeJsObjectReader.class, v8);
         final String done = "done";
         Assert.assertEquals(done, v8.executeScript("var x = new NativeJsObjectReader(); var y = x.readJsObjectAsJavaObjectAndTryGetY({y: '" + done + "'}); y;"));
+    }
+
+    @Test
+    public void shouldReadJsArrayAsJavaArray() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsJavaArrayAndGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadJsArrayAsJavaList() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsJavaListAndGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadJsArrayAsJavaRawArray() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsJavaRawArrayAndGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadJsArrayAsRawJavaList() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsRawJavaListAndGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadArrayAsV8Array() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsV8ArrayAndGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadArrayAsJavaObject() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsJavaObjectAndTryGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadFunctionAsV8Function() {
+        V8JavaAdapter.injectClass(NativeJsFunctionReader.class, v8);
+
+        final AtomicInteger sumContainer = new AtomicInteger();
+        V8JavaAdapter.injectObject("sumContainer", sumContainer, v8);
+
+        final int one = 1;
+        final int two = 2;
+        final int sum = one + two;
+
+        v8.executeScript("var x = new NativeJsFunctionReader(); var y = x.sumAndNotify(" + one + ", " + two + ", function(sum) { sumContainer.set(sum); } ); y;");
+
+        Assert.assertEquals(sum, sumContainer.get());
     }
 }
