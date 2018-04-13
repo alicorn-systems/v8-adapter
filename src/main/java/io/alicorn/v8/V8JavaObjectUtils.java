@@ -498,14 +498,21 @@ public final class V8JavaObjectUtils {
                     BOXED_PRIMITIVE_MAP.get(argument.getClass())
                             .isAssignableFrom(BOXED_PRIMITIVE_MAP.get(javaArgumentType))) {
                 return argument;
-            } else {
+            } else if (Number.class.isAssignableFrom(javaArgumentType) && argument instanceof Number) {
                 Object widened = widenNumber(argument, javaArgumentType);
                 if (widened != null) {
                     return widened;
                 } else {
-                    throw new IllegalArgumentException(
-                            "Primitive argument cannot be coerced to expected parameter type.");
+                    throw new IllegalArgumentException("Primitive argument cannot be coerced to expected parameter type."
+                                + " Expected " + javaArgumentType
+                                + ", but actual is " + argument.getClass() + " (value: " + argument + ")");
+
                 }
+            } else {
+                throw new IllegalArgumentException("Incompatible parameter type."
+                        + " Expected " + javaArgumentType
+                        + ", but actual is " + argument.getClass() + " (value: " + argument + ")");
+
             }
         }
     }

@@ -26,6 +26,7 @@ final class V8JavaInstanceMethodProxy extends V8JavaMethodProxy {
                 //See if a method exists.
                 Object[] coercedArguments = null;
                 Method coercedMethod = null;
+                IllegalArgumentException argumentsMismatchException = null;
                 for (Method method : getMethodSignatures()) {
                     try {
                         coercedArguments = V8JavaObjectUtils.translateJavascriptArgumentsToJava(method.isVarArgs(), method.getParameterTypes(), parameters, receiver, cache);
@@ -33,6 +34,8 @@ final class V8JavaInstanceMethodProxy extends V8JavaMethodProxy {
                         break;
                     } catch (IllegalArgumentException e) {
                         //TODO: Exception to manage flow here is abysmal. Some critical information is being ignored which is unacceptable.
+                        //XXX: Try something similar to of io.reactivex.exceptions.CompositeException in order not to loose important exception in case of overloaded methods
+                        argumentsMismatchException = e;
                     }
                 }
 
@@ -48,7 +51,7 @@ final class V8JavaInstanceMethodProxy extends V8JavaMethodProxy {
                         }
                     }
                     errorMessage.append("].");
-                    throw new IllegalArgumentException(errorMessage.toString());
+                    throw new IllegalArgumentException(errorMessage.toString(), argumentsMismatchException);
                 }
 
                 //Invoke the method.
