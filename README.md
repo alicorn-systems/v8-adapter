@@ -15,7 +15,7 @@ An example `<dependencies>` section for a project that uses J2V8 on _Linux_ woul
         <dependency>
             <groupId>io.alicorn.v8</groupId>
             <artifactId>v8-adapter</artifactId>
-            <version>1.41</version>
+            <version>1.55</version>
         </dependency>
 
         <!-- J2V8 Runtime -->
