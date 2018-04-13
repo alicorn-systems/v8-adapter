@@ -1,6 +1,7 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.*;
+import com.eclipsesource.v8.utils.V8ObjectUtils;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.*;
@@ -471,6 +472,10 @@ public final class V8JavaObjectUtils {
                             throw new IllegalArgumentException(
                                     "Argument is Java type but does not match signature for this method.");
                         }
+                    } else if (Map.class == javaArgumentType || Object.class == javaArgumentType) {
+                        return V8ObjectUtils.toMap(argumentObject);
+                    } else if (V8Object.class == javaArgumentType) {
+                        return argumentObject.twin();
                     } else {
                         cache.removeGarbageCollectedJavaObjects();
                         throw new IllegalArgumentException(

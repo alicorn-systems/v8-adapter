@@ -12,6 +12,7 @@ import org.hamcrest.core.StringContains;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
+import java.util.Map;
 import java.util.Random;
 
 public class V8JavaAdapterTest {
@@ -183,6 +184,31 @@ public class V8JavaAdapterTest {
         public void doInstance(InterceptableFoo foo) { this.i += foo.getI(); }
         public void setI(int i) { this.i = i; }
         public int getI() { return i; }
+    }
+
+    private static final class NativeJsObjectReader {
+
+        private final String yKey = "y";
+
+        public NativeJsObjectReader() {}
+
+        public Object readJsObjectAsMapAndGetY(Map mapWithYProperty) {
+            return mapWithYProperty.get(yKey);
+        }
+
+        public Object readJsObjectAsV8ObjectAndGetY(V8Object objectWithYProperty) {
+            final Object yValue = objectWithYProperty.get(yKey);
+            objectWithYProperty.release();
+            return yValue;
+        }
+
+        public Object readJsObjectAsJavaObjectAndTryGetY(Object possibleMapWithYProperty) {
+            if (!(possibleMapWithYProperty instanceof Map)) {
+                throw new IllegalArgumentException("Can read from object, which is not map, but " + possibleMapWithYProperty);
+            }
+
+            return ((Map) possibleMapWithYProperty).get(yKey);
+        }
     }
 
 //Tests////////////////////////////////////////////////////////////////////////
@@ -447,5 +473,26 @@ public class V8JavaAdapterTest {
     public void shouldInjectAsymmetricSettersAndGetterUndefined() {
         V8JavaAdapter.injectClass(IncompleteBeanTwo.class, v8);
         Assert.assertEquals(V8.getUndefined(), v8.executeScript("var x = new IncompleteBeanTwo(); x.j = 6688; x.j;"));
+    }
+
+    @Test
+    public void shouldReadJsObjectAsMap() {
+        V8JavaAdapter.injectClass(NativeJsObjectReader.class, v8);
+        final String done = "done";
+        Assert.assertEquals(done, v8.executeScript("var x = new NativeJsObjectReader(); var y = x.readJsObjectAsMapAndGetY({y: '" + done + "'}); y;"));
+    }
+
+    @Test
+    public void shouldReadJsObjectAsV8Object() {
+        V8JavaAdapter.injectClass(NativeJsObjectReader.class, v8);
+        final String done = "done";
+        Assert.assertEquals(done, v8.executeScript("var x = new NativeJsObjectReader(); var y = x.readJsObjectAsV8ObjectAndGetY({y: '" + done + "'}); y;"));
+    }
+
+    @Test
+    public void shouldReadJsObjectAsJavaObject() {
+        V8JavaAdapter.injectClass(NativeJsObjectReader.class, v8);
+        final String done = "done";
+        Assert.assertEquals(done, v8.executeScript("var x = new NativeJsObjectReader(); var y = x.readJsObjectAsJavaObjectAndTryGetY({y: '" + done + "'}); y;"));
     }
 }
