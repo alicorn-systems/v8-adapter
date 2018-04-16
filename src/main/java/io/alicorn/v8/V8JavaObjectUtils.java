@@ -257,7 +257,8 @@ public final class V8JavaObjectUtils {
         }
 
         // Welp, find a default.
-        return null;
+        throw new IllegalArgumentException("Primitive argument cannot be coerced to expected parameter type."
+                + " Expected " + to + ", but actual is " + from.getClass() + " (value: " + from + ")");
     }
 
     /**
@@ -413,6 +414,7 @@ public final class V8JavaObjectUtils {
             if (argument instanceof V8Function) {
                 final V8Function v8ArgumentFunction = (V8Function) argument;
 
+                //xxx: update check in case of java 8 upgrade:
                 if (javaArgumentType.isInterface() && javaArgumentType.getDeclaredMethods().length == 1) {
                     //Create a proxy class for the functional interface that wraps this V8Function.
                     V8FunctionInvocationHandler handler = new V8FunctionInvocationHandler(receiver, v8ArgumentFunction, cache);
@@ -421,7 +423,7 @@ public final class V8JavaObjectUtils {
                     return v8ArgumentFunction.twin();
                 } else {
                     throw new IllegalArgumentException(
-                            "Method was passed V8Function but does not accept a functional interface.");
+                            "Method was passed V8Function but does not accept a functional interface: found " + javaArgumentType);
                 }
             } else if (argument instanceof V8Array) {
                 V8Array v8ArgumentArray = (V8Array) argument;
@@ -506,15 +508,7 @@ public final class V8JavaObjectUtils {
                             .isAssignableFrom(BOXED_PRIMITIVE_MAP.get(javaArgumentType))) {
                 return argument;
             } else if (Number.class.isAssignableFrom(javaArgumentType) && argument instanceof Number) {
-                Object widened = widenNumber(argument, javaArgumentType);
-                if (widened != null) {
-                    return widened;
-                } else {
-                    throw new IllegalArgumentException("Primitive argument cannot be coerced to expected parameter type."
-                                + " Expected " + javaArgumentType
-                                + ", but actual is " + argument.getClass() + " (value: " + argument + ")");
-
-                }
+                    return widenNumber(argument, javaArgumentType);
             } else {
                 throw new IllegalArgumentException("Incompatible parameter type."
                         + " Expected " + javaArgumentType
