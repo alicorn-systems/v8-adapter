@@ -646,4 +646,22 @@ public class V8JavaAdapterTest {
         thrown.expectCause(IsInstanceOf.<Throwable>instanceOf(IllegalArgumentException.class));
         Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInt(null); y;"));
     }
+
+    @Test
+    public void shouldReadUndefinedAsNull() {
+        V8JavaAdapter.injectClass(JsNullReader.class, v8);
+
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInteger(undefined); y;"));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaClass(undefined); y;"));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaFunctionalInterface(undefined); y;"));
+    }
+
+    @Test
+    public void shouldThrowIllArgExWhenUndefinedToPrimitive() {
+        V8JavaAdapter.injectClass(JsNullReader.class, v8);
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectCause(IsInstanceOf.<Throwable>instanceOf(IllegalArgumentException.class));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInt(undefined); y;"));
+    }
 }

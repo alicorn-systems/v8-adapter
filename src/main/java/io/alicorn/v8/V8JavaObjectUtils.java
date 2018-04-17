@@ -410,13 +410,9 @@ public final class V8JavaObjectUtils {
      *         specified by te passed array of java argument types.
      */
     public static Object translateJavascriptArgumentToJava(Class<?> javaArgumentType, Type javaArgumentGenericType, Object argument, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
-        if (argument == null) {
-            if (!javaArgumentType.isPrimitive()) {
-                return argument;
-            } else {
-                throw new IllegalArgumentException("Unable to convert null. Primitive expected: " + javaArgumentType);
-            }
-        } else if (argument instanceof V8Value) {
+        if (argument == null) return nullOrThrowOnPrimitive(javaArgumentType);
+
+        if (argument instanceof V8Value) {
             if (argument instanceof V8Function) {
                 final V8Function v8ArgumentFunction = (V8Function) argument;
 
@@ -470,27 +466,29 @@ public final class V8JavaObjectUtils {
                     throw new IllegalArgumentException("Method was passed a V8Array but does not accept arrays.");
                 }
             } else if (argument instanceof V8Object) {
-                try {
-                    final V8Object argumentObject = (V8Object) argument;
+                final V8Object v8ArgumentObject = (V8Object) argument;
 
-                    if (argumentObject.contains(JAVA_OBJECT_HANDLE_ID)) {
+                if (v8ArgumentObject.isUndefined()) return nullOrThrowOnPrimitive(javaArgumentType);
+
+                try {
+                    if (v8ArgumentObject.contains(JAVA_OBJECT_HANDLE_ID)) {
                         //Attempt to retrieve a Java object handle.
-                        String javaHandle = (String) argumentObject.get(JAVA_OBJECT_HANDLE_ID);
+                        String javaHandle = (String) v8ArgumentObject.get(JAVA_OBJECT_HANDLE_ID);
                         Object javaObject = cache.identifierToJavaObjectMap.get(javaHandle).get();
 
                         if (javaArgumentType.isAssignableFrom(javaObject.getClass())) {
                             // Check if it's intercepted.
                             cache.cachedV8JavaClasses.get(javaObject.getClass()).readInjectedInterceptor(
-                                    argumentObject);
+                                    v8ArgumentObject);
                             return javaObject;
                         } else {
                             throw new IllegalArgumentException(
                                     "Argument is Java type but does not match signature for this method.");
                         }
                     } else if (Map.class == javaArgumentType || Object.class == javaArgumentType) {
-                        return V8ObjectUtils.toMap(argumentObject);
+                        return V8ObjectUtils.toMap(v8ArgumentObject);
                     } else if (V8Object.class == javaArgumentType) {
-                        return argumentObject.twin();
+                        return v8ArgumentObject.twin();
                     } else {
                         cache.removeGarbageCollectedJavaObjects();
                         throw new IllegalArgumentException(
@@ -521,6 +519,14 @@ public final class V8JavaObjectUtils {
                         + ", but actual is " + argument.getClass() + " (value: " + argument + ")");
 
             }
+        }
+    }
+
+    private static Object nullOrThrowOnPrimitive(Class<?> javaArgumentType) {
+        if (!javaArgumentType.isPrimitive()) {
+            return null;
+        } else {
+            throw new IllegalArgumentException("Unable to convert null. Primitive expected: " + javaArgumentType);
         }
     }
 
