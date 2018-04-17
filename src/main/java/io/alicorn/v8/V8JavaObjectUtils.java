@@ -568,8 +568,9 @@ public final class V8JavaObjectUtils {
     public static Object[] translateJavascriptArgumentsToJava(boolean isVarArgs, Class<?>[] javaArgumentTypes, Type[] javaArgumentGenericTypes, V8Array javascriptArguments, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
         // Varargs handling.
         if (isVarArgs && javaArgumentTypes.length > 0 &&
-            javaArgumentTypes[javaArgumentTypes.length - 1].isArray() &&
-            javascriptArguments.length() >= javaArgumentTypes.length - 1) {
+                javaArgumentTypes[javaArgumentTypes.length - 1].isArray() &&
+                javascriptArguments.length() >= javaArgumentTypes.length - 1) {
+
             Class<?> originalVarargsType = javaArgumentTypes[javaArgumentTypes.length - 1].getComponentType();
             Class<?> varargsType = originalVarargsType;
             if (BOXED_PRIMITIVE_MAP.containsKey(varargsType)) {
@@ -629,7 +630,7 @@ public final class V8JavaObjectUtils {
                 }
             }
 
-            //all the params of JS function are optional. If it's not specified - undefined is passed instead.
+            //all the params in the JS are optional and undefined is passed as
             for (int i = javascriptArguments.length(); i < javaArgumentTypes.length; i++) {
                 returnedArgumentValues[i] = nullOrThrowOnPrimitive(javaArgumentTypes[i]);
             }
@@ -637,7 +638,8 @@ public final class V8JavaObjectUtils {
             return returnedArgumentValues;
         } else {
             throw new IllegalArgumentException(
-                    "Method arguments size and passed arguments size do not match.");
+                    "Method arguments size and passed arguments size do not match.  " +
+                            "Expected " + javaArgumentTypes.length + ", but got " + javascriptArguments.length());
         }
     }
 }
