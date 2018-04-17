@@ -57,6 +57,7 @@ final class V8JavaInstanceMethodProxy extends V8JavaMethodProxy {
                 //Invoke the method.
                 try {
                     return V8JavaObjectUtils.translateJavaArgumentToJavascript(coercedMethod.invoke(o, coercedArguments), V8JavaObjectUtils.getRuntimeSarcastically(receiver), cache);
+                //xxx: add more details of expected and actual arguments for existing try-catch and for IllegalArgumentException as well.
                 } catch (IllegalAccessException e) {
                     throw new IllegalArgumentException("Method received invalid arguments [" + e.getMessage() + "]!");
                 } catch (InvocationTargetException e) {

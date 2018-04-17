@@ -410,7 +410,13 @@ public final class V8JavaObjectUtils {
      *         specified by te passed array of java argument types.
      */
     public static Object translateJavascriptArgumentToJava(Class<?> javaArgumentType, Type javaArgumentGenericType, Object argument, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
-        if (argument instanceof V8Value) {
+        if (argument == null) {
+            if (!javaArgumentType.isPrimitive()) {
+                return argument;
+            } else {
+                throw new IllegalArgumentException("Unable to convert null. Primitive expected: " + javaArgumentType);
+            }
+        } else if (argument instanceof V8Value) {
             if (argument instanceof V8Function) {
                 final V8Function v8ArgumentFunction = (V8Function) argument;
 

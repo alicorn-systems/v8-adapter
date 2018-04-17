@@ -6,6 +6,7 @@ import io.alicorn.v8.annotations.JSDisableMethodAutodetect;
 import io.alicorn.v8.annotations.JSGetter;
 import io.alicorn.v8.annotations.JSSetter;
 import io.alicorn.v8.annotations.JSStaticFunction;
+import org.hamcrest.core.IsInstanceOf;
 import org.hamcrest.core.StringContains;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
@@ -262,6 +263,26 @@ public class V8JavaAdapterTest {
             }
 
             return ((List) possibleList).get(firstPostition);
+        }
+    }
+
+    private static final class JsNullReader {
+        public JsNullReader() {}
+
+        public int readAndGetInt(int arg) {
+            return arg;
+        }
+
+        public Integer readAndGetInteger(Integer arg) {
+            return arg;
+        }
+
+        public Foo readAndGetJavaClass(Foo arg) {
+            return arg;
+        }
+
+        public Foo readAndGetJavaFunctionalInterface(Foo arg) {
+            return arg;
         }
     }
 
@@ -606,5 +627,23 @@ public class V8JavaAdapterTest {
         v8.executeScript("var x = new NativeJsFunctionReader(); var y = x.sumAndNotify(" + one + ", " + two + ", function(sum) { sumContainer.set(sum); } ); y;");
 
         Assert.assertEquals(sum, sumContainer.get());
+    }
+
+    @Test
+    public void shouldReadJsNullAsJavaNull() {
+        V8JavaAdapter.injectClass(JsNullReader.class, v8);
+
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInteger(null); y;"));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaClass(null); y;"));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaFunctionalInterface(null); y;"));
+    }
+
+    @Test
+    public void shouldThrowIllArgExWhenNullToPrimitive() {
+        V8JavaAdapter.injectClass(JsNullReader.class, v8);
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectCause(IsInstanceOf.<Throwable>instanceOf(IllegalArgumentException.class));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInt(null); y;"));
     }
 }
