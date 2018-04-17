@@ -612,7 +612,7 @@ public final class V8JavaObjectUtils {
             return returnedArgumentValues;
 
         // Typical handling.
-        } else if (javaArgumentTypes.length == javascriptArguments.length()) {
+        } else if (javaArgumentTypes.length >= javascriptArguments.length()) {
             Object[] returnedArgumentValues = new Object[javaArgumentTypes.length];
 
             for (int i = 0; i < javascriptArguments.length(); i++) {
@@ -627,6 +627,11 @@ public final class V8JavaObjectUtils {
                         ((V8Value) argument).release();
                     }
                 }
+            }
+
+            //all the params of JS function are optional. If it's not specified - undefined is passed instead.
+            for (int i = javascriptArguments.length(); i < javaArgumentTypes.length; i++) {
+                returnedArgumentValues[i] = nullOrThrowOnPrimitive(javaArgumentTypes[i]);
             }
 
             return returnedArgumentValues;
