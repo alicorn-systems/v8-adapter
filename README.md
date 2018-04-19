@@ -1,4 +1,7 @@
 # V8 Java Adapter
+
+![Maven Central](https://img.shields.io/maven-central/v/io.alicorn.v8/v8-adapter.svg)[https://search.maven.org/#search%7Cga%7C1%7Ca%3A%22v8-adapter%22]
+
 This project is an add-on for the excellent [J2V8 Project](https://github.com/eclipsesource/J2V8), allowing users to easily share Java classes and objects with a V8 runtime.
 
 ## Getting The V8 Java Adapter
