@@ -450,9 +450,9 @@ public final class V8JavaObjectUtils {
 
 
                     final Class<?> listType;
-                    if (argGenericType instanceof ParameterizedType) {
-                        Type[] argGenericTypeParams = ((ParameterizedType) argGenericType).getActualTypeArguments();
-                        listType = (Class<?>) argGenericTypeParams[0];
+                    final List<Class> argGenericClassParams = getArgGenericClassParams(argGenericType);
+                    if (!argGenericClassParams.isEmpty()) {
+                        listType = argGenericClassParams.get(0);
                     } else {
                         listType = Object.class;
                     }
@@ -520,6 +520,29 @@ public final class V8JavaObjectUtils {
 
             }
         }
+    }
+
+    /**
+     * @return class of the type param. E.g. List<String> => String or List<Map<Integer, String>> => Map.
+     */
+    private static List<Class> getArgGenericClassParams(Type argGenericType) {
+        //if it's null or raw type without generic class information.
+        if (!(argGenericType instanceof ParameterizedType)) return Collections.emptyList();
+
+        final Type[] actualTypeArguments = ((ParameterizedType) argGenericType).getActualTypeArguments();
+        List<Class> argumentGenericClassParams = new ArrayList<Class>(actualTypeArguments.length);
+
+        for (Type typeArgument : actualTypeArguments) {
+            if (typeArgument instanceof Class) {
+                argumentGenericClassParams.add((Class) typeArgument);
+            } if (typeArgument instanceof ParameterizedType) {
+                argumentGenericClassParams.add((Class) ((ParameterizedType) typeArgument).getRawType());
+            } else {
+                argumentGenericClassParams.add(Object.class);
+            }
+        }
+
+        return argumentGenericClassParams;
     }
 
     public static Object translateJavascriptArgumentToJava(Class<?> javaArgumentType, Object argument, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
