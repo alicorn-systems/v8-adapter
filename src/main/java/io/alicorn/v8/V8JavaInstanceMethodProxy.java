@@ -45,7 +45,7 @@ final class V8JavaInstanceMethodProxy extends V8JavaMethodProxy {
                     errorMessage.append(" with parameters [");
                     for (int i = 0; i < parameters.length(); i++) {
                         Object obj = parameters.get(i);
-                        errorMessage.append(String.valueOf(parameters.get(i))).append(", ");
+                        errorMessage.append(String.valueOf(obj)).append(", ");
                         if (obj instanceof V8Value) {
                             ((V8Value) obj).release();
                         }
