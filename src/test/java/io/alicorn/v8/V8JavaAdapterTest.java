@@ -11,10 +11,7 @@ import org.hamcrest.core.StringContains;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class V8JavaAdapterTest {
@@ -210,6 +207,30 @@ public class V8JavaAdapterTest {
             }
 
             return ((Map) possibleMapWithYProperty).get(yKey);
+        }
+    }
+
+    private static final class RawMapHolder {
+        Map<String, ?> map;
+
+        public Map<String, ?> getMap() {
+            return map;
+        }
+
+        public void setMap(Map<String, ?> map) {
+            this.map = map;
+        }
+    }
+
+    private static final class StringMapHolder {
+        Map<String, String> map;
+
+        public Map<String, String> getMap() {
+            return map;
+        }
+
+        public void setMap(Map<String, String> map) {
+            this.map = map;
         }
     }
 
@@ -550,11 +571,46 @@ public class V8JavaAdapterTest {
         Assert.assertEquals(V8.getUndefined(), v8.executeScript("var x = new IncompleteBeanTwo(); x.j = 6688; x.j;"));
     }
 
+//    - Test Map<String, Integer>
+////    - Test Map<String, Foo>
+
     @Test
     public void shouldReadJsObjectAsMap() {
         V8JavaAdapter.injectClass(NativeJsObjectReader.class, v8);
         final String done = "done";
         Assert.assertEquals(done, v8.executeScript("var x = new NativeJsObjectReader(); var y = x.readJsObjectAsMapAndGetY({y: '" + done + "'}); y;"));
+    }
+
+    @Test
+    public void shouldReadJsObjectAsMapWithPreviouslyInjectedObject() {
+        final String holderJsName = "holder";
+        final RawMapHolder holder = new RawMapHolder();
+        V8JavaAdapter.injectObject(holderJsName, holder, v8);
+
+        final WannabeBean wannabeBean = new WannabeBean();
+        final String wannabeBeanJsName = "bean";
+        V8JavaAdapter.injectObject(wannabeBeanJsName, wannabeBean, v8);
+
+        v8.executeVoidScript(("var y = " + holderJsName + ".setMap({y: " + wannabeBeanJsName + "}); y;"));
+
+        final Map<String, Object> expected = new HashMap<String, Object>();
+        expected.put("y", wannabeBean);
+        Assert.assertEquals(expected, holder.getMap());
+    }
+
+    @Test
+    public void shouldReadJsObjectAsGenericMap() {
+        final String holderJsName = "holder";
+        final StringMapHolder holder = new StringMapHolder();
+        V8JavaAdapter.injectObject(holderJsName, holder, v8);
+
+        final Integer one = 1;
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectCause(IsInstanceOf.<Throwable>instanceOf(IllegalArgumentException.class));
+        thrown.expectMessage(StringContains.containsString("No signature exists for setMap"));
+
+        v8.executeVoidScript(("var y = " + holderJsName + ".setMap({y: " + one + "}); y;"));
     }
 
     @Test

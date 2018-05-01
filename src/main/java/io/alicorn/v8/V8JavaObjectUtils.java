@@ -486,7 +486,15 @@ public final class V8JavaObjectUtils {
                                     "Argument is Java type but does not match signature for this method.");
                         }
                     } else if (Map.class == javaArgumentType || Object.class == javaArgumentType) {
-                        return V8ObjectUtils.toMap(v8ArgumentObject);
+                        final Class<?> mapValueType;
+                        final List<Class> argGenericClassParams = getArgGenericClassParams(argGenericType);
+                        if (argGenericClassParams.size() >= 2) {
+                            mapValueType = argGenericClassParams.get(1);
+                        } else {
+                            mapValueType = Object.class;
+                        }
+
+                        return convertToMap(v8ArgumentObject, mapValueType, receiver, cache);
                     } else if (V8Object.class == javaArgumentType) {
                         return v8ArgumentObject.twin();
                     } else {
@@ -535,7 +543,7 @@ public final class V8JavaObjectUtils {
         for (Type typeArgument : actualTypeArguments) {
             if (typeArgument instanceof Class) {
                 argumentGenericClassParams.add((Class) typeArgument);
-            } if (typeArgument instanceof ParameterizedType) {
+            } else if (typeArgument instanceof ParameterizedType) {
                 argumentGenericClassParams.add((Class) ((ParameterizedType) typeArgument).getRawType());
             } else {
                 argumentGenericClassParams.add(Object.class);
@@ -575,6 +583,28 @@ public final class V8JavaObjectUtils {
             }
         }
         return array;
+    }
+
+
+    private static Map<String, Object> convertToMap(V8Object v8Object, Class<?> valueType, V8Object receiver, V8JavaCache cache) {
+        final LinkedHashMap<String, Object> javaMap = new LinkedHashMap<String, Object>();
+
+        String[] keys = v8Object.getKeys();
+        for (String key : keys) {
+            final Object jsObjValue = v8Object.get(key);
+            try {
+                final Object translatedValue = translateJavascriptArgumentToJava(valueType, jsObjValue, receiver, cache);
+                javaMap.put(key, translatedValue);
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } finally {
+                if (jsObjValue instanceof V8Value) {
+                    ((V8Value) jsObjValue).release();
+                }
+            }
+        }
+
+        return javaMap;
     }
 
     /**
