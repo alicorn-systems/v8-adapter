@@ -399,17 +399,17 @@ public final class V8JavaObjectUtils {
      * any objects passed to this method; this method will not make an effort to release them.
      *
      * @param javaArgumentType Java type that the argument must match.
-     * @param javaArgumentGenericType Generic type of the javaArgumentType. Could be null.
      * @param argument Argument to translate to Java.
      * @param receiver V8Object receiver that any functional arguments should be tied to.
      * @param cache V8JavaCache associated with the given V8 runtime.
+     * @param argGenericType Generic type of the javaArgumentType. Contains info about it actual Types arguments. Could be null.
      *
      * @return Translated Object based on the passed Java types and and Javascript value.
      *
      * @throws IllegalArgumentException if the Javascript value could not be coerced in the types
      *         specified by te passed array of java argument types.
      */
-    public static Object translateJavascriptArgumentToJava(Class<?> javaArgumentType, Type javaArgumentGenericType, Object argument, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
+    public static Object translateJavascriptArgumentToJava(Class<?> javaArgumentType, Object argument, V8Object receiver, V8JavaCache cache, Type argGenericType) throws IllegalArgumentException {
         if (argument == null) return nullOrThrowOnPrimitive(javaArgumentType);
 
         if (argument instanceof V8Value) {
@@ -450,8 +450,8 @@ public final class V8JavaObjectUtils {
 
 
                     final Class<?> listType;
-                    if (javaArgumentGenericType instanceof ParameterizedType) {
-                        Type[] argGenericTypeParams = ((ParameterizedType) javaArgumentGenericType).getActualTypeArguments();
+                    if (argGenericType instanceof ParameterizedType) {
+                        Type[] argGenericTypeParams = ((ParameterizedType) argGenericType).getActualTypeArguments();
                         listType = (Class<?>) argGenericTypeParams[0];
                     } else {
                         listType = Object.class;
@@ -522,6 +522,10 @@ public final class V8JavaObjectUtils {
         }
     }
 
+    public static Object translateJavascriptArgumentToJava(Class<?> javaArgumentType, Object argument, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
+        return translateJavascriptArgumentToJava(javaArgumentType, argument, receiver, cache, null);
+    }
+
     private static Object nullOrThrowOnPrimitive(Class<?> javaArgumentType) {
         if (!javaArgumentType.isPrimitive()) {
             return null;
@@ -537,8 +541,8 @@ public final class V8JavaObjectUtils {
             // We have to release the value immediately after using it if it's a V8Value.
             Object arrayElement = v8Array.get(i);
             try {
-                array[i] = translateJavascriptArgumentToJava(originalArrayType,
-                        null, arrayElement, receiver, cache);
+                //argGenericType could be read for GenericArrayType case (e.g. Map<Integer, String>[]), but omitted for simplicity
+                array[i] = translateJavascriptArgumentToJava(originalArrayType, arrayElement, receiver, cache);
             } catch (IllegalArgumentException e) {
                 throw e;
             } finally {
@@ -555,7 +559,7 @@ public final class V8JavaObjectUtils {
      *
      * @param isVarArgs Whether or not the Java parameters list ends in a varargs array.
      * @param javaArgumentTypes Java types that the arguments must match.
-     * @param javaArgumentGenericTypes
+     * @param argsGenericType
      * @param javascriptArguments Arguments to translate to Java.
      * @param receiver V8Object receiver that any functional arguments should be tied to.
      * @param cache V8JavaCache associated with the given V8 runtime.
@@ -565,7 +569,7 @@ public final class V8JavaObjectUtils {
      * @throws IllegalArgumentException if the V8Array could not be coerced into the types specified
      *         by the passed array of Java argument types.
      */
-    public static Object[] translateJavascriptArgumentsToJava(boolean isVarArgs, Class<?>[] javaArgumentTypes, Type[] javaArgumentGenericTypes, V8Array javascriptArguments, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
+    public static Object[] translateJavascriptArgumentsToJava(boolean isVarArgs, Class<?>[] javaArgumentTypes, Type[] argsGenericType, V8Array javascriptArguments, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
         // Varargs handling.
         if (isVarArgs && javaArgumentTypes.length > 0 &&
                 javaArgumentTypes[javaArgumentTypes.length - 1].isArray() &&
@@ -587,12 +591,13 @@ public final class V8JavaObjectUtils {
                     if (returnedArgumentValues.length - 1 > i) {
                         returnedArgumentValues[i] =
                                 translateJavascriptArgumentToJava(javaArgumentTypes[i],
-                                        javaArgumentGenericTypes[i], argument, receiver, cache);
+                                        argument, receiver, cache, argsGenericType[i]);
 
                     // Otherwise insert into the varargs.
                     } else {
+                        //argGenericType could be read for GenericArrayType case (e.g. Map<Integer, String>[]), but omitted for simplicity
                         varargs[i - (returnedArgumentValues.length - 1)] =
-                                translateJavascriptArgumentToJava(varargsType, null, argument, receiver, cache);
+                                translateJavascriptArgumentToJava(varargsType, argument, receiver, cache);
                     }
                 } catch (IllegalArgumentException e) {
                     throw e;
@@ -619,8 +624,7 @@ public final class V8JavaObjectUtils {
             for (int i = 0; i < javascriptArguments.length(); i++) {
                 Object argument = javascriptArguments.get(i);
                 try {
-                    returnedArgumentValues[i] = translateJavascriptArgumentToJava(javaArgumentTypes[i], javaArgumentGenericTypes[i], argument,
-                                                                                  receiver, cache);
+                    returnedArgumentValues[i] = translateJavascriptArgumentToJava(javaArgumentTypes[i], argument, receiver, cache, argsGenericType[i]);
                 } catch (IllegalArgumentException e) {
                     throw e;
                 } finally {
