@@ -257,7 +257,8 @@ public final class V8JavaObjectUtils {
         }
 
         // Welp, find a default.
-        return null;
+        throw new IllegalArgumentException("Primitive argument cannot be coerced to expected parameter type."
+                + " Expected " + to + ", but actual is " + from.getClass() + " (value: " + from + ")");
     }
 
     /**
@@ -401,81 +402,101 @@ public final class V8JavaObjectUtils {
      * @param argument Argument to translate to Java.
      * @param receiver V8Object receiver that any functional arguments should be tied to.
      * @param cache V8JavaCache associated with the given V8 runtime.
+     * @param argGenericType Generic type of the javaArgumentType. Contains info about it actual Types arguments. Could be null.
      *
      * @return Translated Object based on the passed Java types and and Javascript value.
      *
      * @throws IllegalArgumentException if the Javascript value could not be coerced in the types
      *         specified by te passed array of java argument types.
      */
-    public static Object translateJavascriptArgumentToJava(Class<?> javaArgumentType, Object argument, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
+    public static Object translateJavascriptArgumentToJava(Class<?> javaArgumentType, Object argument, V8Object receiver, V8JavaCache cache, Type argGenericType) throws IllegalArgumentException {
+        if (argument == null) return nullOrThrowOnPrimitive(javaArgumentType);
+
         if (argument instanceof V8Value) {
             if (argument instanceof V8Function) {
+                final V8Function v8ArgumentFunction = (V8Function) argument;
+
+                //TODO: update check in case of java 8 upgrade:
                 if (javaArgumentType.isInterface() && javaArgumentType.getDeclaredMethods().length == 1) {
                     //Create a proxy class for the functional interface that wraps this V8Function.
-                    V8FunctionInvocationHandler handler = new V8FunctionInvocationHandler(receiver, (V8Function) argument, cache);
+                    V8FunctionInvocationHandler handler = new V8FunctionInvocationHandler(receiver, v8ArgumentFunction, cache);
                     return Proxy.newProxyInstance(javaArgumentType.getClassLoader(), new Class[] { javaArgumentType }, handler);
+                } else if (V8Function.class == javaArgumentType) {
+                    return v8ArgumentFunction.twin();
                 } else {
                     throw new IllegalArgumentException(
-                            "Method was passed V8Function but does not accept a functional interface.");
+                            "Method was passed V8Function but does not accept a functional interface: found " + javaArgumentType);
                 }
             } else if (argument instanceof V8Array) {
+                V8Array v8ArgumentArray = (V8Array) argument;
+
                 if (javaArgumentType.isArray()) {
                     // Perform a single cast up front.
-                    V8Array v8Array = (V8Array) argument;
 
                     // TODO: This logic is almost identical to the varargs manipulation logic. Maybe we can reuse it?
-                    Class<?> originalArrayType = javaArgumentType.getComponentType();
+                    final Class<?> originalArrayType = javaArgumentType.getComponentType();
                     Class<?> arrayType = originalArrayType;
                     if (BOXED_PRIMITIVE_MAP.containsKey(arrayType)) {
                         arrayType = BOXED_PRIMITIVE_MAP.get(arrayType);
                     }
-                    Object[] array = (Object[]) Array.newInstance(arrayType, v8Array.length());
-
-                    for (int i = 0; i < array.length; i++) {
-                        // We have to release the value immediately after using it if it's a V8Value.
-                        Object arrayElement = v8Array.get(i);
-                        try {
-                            array[i] = translateJavascriptArgumentToJava(javaArgumentType.getComponentType(),
-                                                                         arrayElement, receiver, cache);
-                        } catch (IllegalArgumentException e) {
-                            throw e;
-                        } finally {
-                            if (arrayElement instanceof V8Value) {
-                                ((V8Value) arrayElement).release();
-                            }
-                        }
-                    }
+                    Object[] array = convertToArray(v8ArgumentArray, arrayType, originalArrayType, receiver, cache);
 
                     if (BOXED_PRIMITIVE_MAP.containsKey(originalArrayType) && BOXED_PRIMITIVE_MAP.containsValue(arrayType)) {
                         return toPrimitiveArray(array, arrayType);
                     } else {
                         return array;
                     }
+                } else if (List.class == javaArgumentType || Object.class == javaArgumentType) {
+
+
+                    final Class<?> listType;
+                    final List<Class> argGenericClassParams = getArgGenericClassParams(argGenericType);
+                    if (!argGenericClassParams.isEmpty()) {
+                        listType = argGenericClassParams.get(0);
+                    } else {
+                        listType = Object.class;
+                    }
+
+                    Object[] array = convertToArray(v8ArgumentArray, listType, listType, receiver, cache);
+
+                    return Arrays.asList(array);
+                } else if (V8Array.class == javaArgumentType) {
+                    return v8ArgumentArray.twin();
                 } else {
                     throw new IllegalArgumentException("Method was passed a V8Array but does not accept arrays.");
                 }
             } else if (argument instanceof V8Object) {
-                try {
-                    final V8Object argumentObject = (V8Object) argument;
+                final V8Object v8ArgumentObject = (V8Object) argument;
 
-                    if (argumentObject.contains(JAVA_OBJECT_HANDLE_ID)) {
+                if (v8ArgumentObject.isUndefined()) return nullOrThrowOnPrimitive(javaArgumentType);
+
+                try {
+                    if (v8ArgumentObject.contains(JAVA_OBJECT_HANDLE_ID)) {
                         //Attempt to retrieve a Java object handle.
-                        String javaHandle = (String) argumentObject.get(JAVA_OBJECT_HANDLE_ID);
+                        String javaHandle = (String) v8ArgumentObject.get(JAVA_OBJECT_HANDLE_ID);
                         Object javaObject = cache.identifierToJavaObjectMap.get(javaHandle).get();
 
                         if (javaArgumentType.isAssignableFrom(javaObject.getClass())) {
                             // Check if it's intercepted.
                             cache.cachedV8JavaClasses.get(javaObject.getClass()).readInjectedInterceptor(
-                                    argumentObject);
+                                    v8ArgumentObject);
                             return javaObject;
                         } else {
                             throw new IllegalArgumentException(
                                     "Argument is Java type but does not match signature for this method.");
                         }
                     } else if (Map.class == javaArgumentType || Object.class == javaArgumentType) {
-                        return V8ObjectUtils.toMap(argumentObject);
+                        final Class<?> mapValueType;
+                        final List<Class> argGenericClassParams = getArgGenericClassParams(argGenericType);
+                        if (argGenericClassParams.size() >= 2) {
+                            mapValueType = argGenericClassParams.get(1);
+                        } else {
+                            mapValueType = Object.class;
+                        }
+
+                        return convertToMap(v8ArgumentObject, mapValueType, receiver, cache);
                     } else if (V8Object.class == javaArgumentType) {
-                        return argumentObject.twin();
+                        return v8ArgumentObject.twin();
                     } else {
                         cache.removeGarbageCollectedJavaObjects();
                         throw new IllegalArgumentException(
@@ -498,16 +519,92 @@ public final class V8JavaObjectUtils {
                     BOXED_PRIMITIVE_MAP.get(argument.getClass())
                             .isAssignableFrom(BOXED_PRIMITIVE_MAP.get(javaArgumentType))) {
                 return argument;
+            } else if (Number.class.isAssignableFrom(javaArgumentType) && argument instanceof Number) {
+                    return widenNumber(argument, javaArgumentType);
             } else {
-                Object widened = widenNumber(argument, javaArgumentType);
-                if (widened != null) {
-                    return widened;
-                } else {
-                    throw new IllegalArgumentException(
-                            "Primitive argument cannot be coerced to expected parameter type.");
+                throw new IllegalArgumentException("Incompatible parameter type."
+                        + " Expected " + javaArgumentType
+                        + ", but actual is " + argument.getClass() + " (value: " + argument + ")");
+
+            }
+        }
+    }
+
+    /**
+     * @return class of the type param. E.g. List<String> => String or List<Map<Integer, String>> => Map.
+     */
+    private static List<Class> getArgGenericClassParams(Type argGenericType) {
+        //if it's null or raw type without generic class information.
+        if (!(argGenericType instanceof ParameterizedType)) return Collections.emptyList();
+
+        final Type[] actualTypeArguments = ((ParameterizedType) argGenericType).getActualTypeArguments();
+        List<Class> argumentGenericClassParams = new ArrayList<Class>(actualTypeArguments.length);
+
+        for (Type typeArgument : actualTypeArguments) {
+            if (typeArgument instanceof Class) {
+                argumentGenericClassParams.add((Class) typeArgument);
+            } else if (typeArgument instanceof ParameterizedType) {
+                argumentGenericClassParams.add((Class) ((ParameterizedType) typeArgument).getRawType());
+            } else {
+                argumentGenericClassParams.add(Object.class);
+            }
+        }
+
+        return argumentGenericClassParams;
+    }
+
+    public static Object translateJavascriptArgumentToJava(Class<?> javaArgumentType, Object argument, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
+        return translateJavascriptArgumentToJava(javaArgumentType, argument, receiver, cache, null);
+    }
+
+    private static Object nullOrThrowOnPrimitive(Class<?> javaArgumentType) {
+        if (!javaArgumentType.isPrimitive()) {
+            return null;
+        } else {
+            throw new IllegalArgumentException("Unable to convert null. Primitive expected: " + javaArgumentType);
+        }
+    }
+
+    private static Object[] convertToArray(V8Array v8Array, Class<?> arrayType, Class<?> originalArrayType, V8Object receiver, V8JavaCache cache) {
+        Object[] array = (Object[]) Array.newInstance(arrayType, v8Array.length());
+
+        for (int i = 0; i < array.length; i++) {
+            // We have to release the value immediately after using it if it's a V8Value.
+            Object arrayElement = v8Array.get(i);
+            try {
+                //argGenericType could be read for GenericArrayType case (e.g. Map<Integer, String>[]), but omitted for simplicity
+                array[i] = translateJavascriptArgumentToJava(originalArrayType, arrayElement, receiver, cache);
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } finally {
+                if (arrayElement instanceof V8Value) {
+                    ((V8Value) arrayElement).release();
                 }
             }
         }
+        return array;
+    }
+
+
+    private static Map<String, Object> convertToMap(V8Object v8Object, Class<?> valueType, V8Object receiver, V8JavaCache cache) {
+        final LinkedHashMap<String, Object> javaMap = new LinkedHashMap<String, Object>();
+
+        String[] keys = v8Object.getKeys();
+        for (String key : keys) {
+            final Object jsObjValue = v8Object.get(key);
+            try {
+                final Object translatedValue = translateJavascriptArgumentToJava(valueType, jsObjValue, receiver, cache);
+                javaMap.put(key, translatedValue);
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } finally {
+                if (jsObjValue instanceof V8Value) {
+                    ((V8Value) jsObjValue).release();
+                }
+            }
+        }
+
+        return javaMap;
     }
 
     /**
@@ -515,6 +612,7 @@ public final class V8JavaObjectUtils {
      *
      * @param isVarArgs Whether or not the Java parameters list ends in a varargs array.
      * @param javaArgumentTypes Java types that the arguments must match.
+     * @param argsGenericType
      * @param javascriptArguments Arguments to translate to Java.
      * @param receiver V8Object receiver that any functional arguments should be tied to.
      * @param cache V8JavaCache associated with the given V8 runtime.
@@ -524,11 +622,12 @@ public final class V8JavaObjectUtils {
      * @throws IllegalArgumentException if the V8Array could not be coerced into the types specified
      *         by the passed array of Java argument types.
      */
-    public static Object[] translateJavascriptArgumentsToJava(boolean isVarArgs, Class<?>[] javaArgumentTypes, V8Array javascriptArguments, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
+    public static Object[] translateJavascriptArgumentsToJava(boolean isVarArgs, Class<?>[] javaArgumentTypes, Type[] argsGenericType, V8Array javascriptArguments, V8Object receiver, V8JavaCache cache) throws IllegalArgumentException {
         // Varargs handling.
         if (isVarArgs && javaArgumentTypes.length > 0 &&
-            javaArgumentTypes[javaArgumentTypes.length - 1].isArray() &&
-            javascriptArguments.length() >= javaArgumentTypes.length - 1) {
+                javaArgumentTypes[javaArgumentTypes.length - 1].isArray() &&
+                javascriptArguments.length() >= javaArgumentTypes.length - 1) {
+
             Class<?> originalVarargsType = javaArgumentTypes[javaArgumentTypes.length - 1].getComponentType();
             Class<?> varargsType = originalVarargsType;
             if (BOXED_PRIMITIVE_MAP.containsKey(varargsType)) {
@@ -545,10 +644,11 @@ public final class V8JavaObjectUtils {
                     if (returnedArgumentValues.length - 1 > i) {
                         returnedArgumentValues[i] =
                                 translateJavascriptArgumentToJava(javaArgumentTypes[i],
-                                                                  argument, receiver, cache);
+                                        argument, receiver, cache, argsGenericType[i]);
 
                     // Otherwise insert into the varargs.
                     } else {
+                        //argGenericType could be read for GenericArrayType case (e.g. Map<Integer, String>[]), but omitted for simplicity
                         varargs[i - (returnedArgumentValues.length - 1)] =
                                 translateJavascriptArgumentToJava(varargsType, argument, receiver, cache);
                     }
@@ -571,14 +671,13 @@ public final class V8JavaObjectUtils {
             return returnedArgumentValues;
 
         // Typical handling.
-        } else if (javaArgumentTypes.length == javascriptArguments.length()) {
+        } else if (javaArgumentTypes.length >= javascriptArguments.length()) {
             Object[] returnedArgumentValues = new Object[javaArgumentTypes.length];
 
             for (int i = 0; i < javascriptArguments.length(); i++) {
                 Object argument = javascriptArguments.get(i);
                 try {
-                    returnedArgumentValues[i] = translateJavascriptArgumentToJava(javaArgumentTypes[i], argument,
-                                                                                  receiver, cache);
+                    returnedArgumentValues[i] = translateJavascriptArgumentToJava(javaArgumentTypes[i], argument, receiver, cache, argsGenericType[i]);
                 } catch (IllegalArgumentException e) {
                     throw e;
                 } finally {
@@ -588,10 +687,16 @@ public final class V8JavaObjectUtils {
                 }
             }
 
+            //all the params in the JS are optional and undefined is passed as
+            for (int i = javascriptArguments.length(); i < javaArgumentTypes.length; i++) {
+                returnedArgumentValues[i] = nullOrThrowOnPrimitive(javaArgumentTypes[i]);
+            }
+
             return returnedArgumentValues;
         } else {
             throw new IllegalArgumentException(
-                    "Method arguments size and passed arguments size do not match.");
+                    "Method arguments size and passed arguments size do not match.  " +
+                            "Expected " + javaArgumentTypes.length + ", but got " + javascriptArguments.length());
         }
     }
 }

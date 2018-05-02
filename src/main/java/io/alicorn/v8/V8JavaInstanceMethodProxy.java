@@ -26,13 +26,16 @@ final class V8JavaInstanceMethodProxy extends V8JavaMethodProxy {
                 //See if a method exists.
                 Object[] coercedArguments = null;
                 Method coercedMethod = null;
+                IllegalArgumentException argumentsMismatchException = null;
                 for (Method method : getMethodSignatures()) {
                     try {
-                        coercedArguments = V8JavaObjectUtils.translateJavascriptArgumentsToJava(method.isVarArgs(), method.getParameterTypes(), parameters, receiver, cache);
+                        coercedArguments = V8JavaObjectUtils.translateJavascriptArgumentsToJava(method.isVarArgs(), method.getParameterTypes(), method.getGenericParameterTypes(), parameters, receiver, cache);
                         coercedMethod = method;
                         break;
                     } catch (IllegalArgumentException e) {
                         //TODO: Exception to manage flow here is abysmal. Some critical information is being ignored which is unacceptable.
+                        //TODO: Try something similar to of io.reactivex.exceptions.CompositeException in order not to loose important exception in case of overloaded methods
+                        argumentsMismatchException = e;
                     }
                 }
 
@@ -42,18 +45,19 @@ final class V8JavaInstanceMethodProxy extends V8JavaMethodProxy {
                     errorMessage.append(" with parameters [");
                     for (int i = 0; i < parameters.length(); i++) {
                         Object obj = parameters.get(i);
-                        errorMessage.append(String.valueOf(parameters.get(i))).append(", ");
+                        errorMessage.append(String.valueOf(obj)).append(", ");
                         if (obj instanceof V8Value) {
                             ((V8Value) obj).release();
                         }
                     }
                     errorMessage.append("].");
-                    throw new IllegalArgumentException(errorMessage.toString());
+                    throw new IllegalArgumentException(errorMessage.toString(), argumentsMismatchException);
                 }
 
                 //Invoke the method.
                 try {
                     return V8JavaObjectUtils.translateJavaArgumentToJavascript(coercedMethod.invoke(o, coercedArguments), V8JavaObjectUtils.getRuntimeSarcastically(receiver), cache);
+                //TODO: add more details of expected and actual arguments for existing try-catch and for IllegalArgumentException as well.
                 } catch (IllegalAccessException e) {
                     throw new IllegalArgumentException("Method received invalid arguments [" + e.getMessage() + "]!");
                 } catch (InvocationTargetException e) {

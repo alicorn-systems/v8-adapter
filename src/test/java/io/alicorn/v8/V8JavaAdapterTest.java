@@ -1,19 +1,18 @@
 package io.alicorn.v8;
 
-import com.eclipsesource.v8.V8;
-import com.eclipsesource.v8.V8Function;
-import com.eclipsesource.v8.V8Object;
-import com.eclipsesource.v8.V8ScriptExecutionException;
+import com.eclipsesource.v8.*;
+import com.eclipsesource.v8.utils.V8ObjectUtils;
 import io.alicorn.v8.annotations.JSDisableMethodAutodetect;
 import io.alicorn.v8.annotations.JSGetter;
 import io.alicorn.v8.annotations.JSSetter;
 import io.alicorn.v8.annotations.JSStaticFunction;
+import org.hamcrest.core.IsInstanceOf;
 import org.hamcrest.core.StringContains;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class V8JavaAdapterTest {
 //Setup classes////////////////////////////////////////////////////////////////
@@ -204,10 +203,107 @@ public class V8JavaAdapterTest {
 
         public Object readJsObjectAsJavaObjectAndTryGetY(Object possibleMapWithYProperty) {
             if (!(possibleMapWithYProperty instanceof Map)) {
-                throw new IllegalArgumentException("Can read from object, which is not map, but " + possibleMapWithYProperty);
+                throw new IllegalArgumentException("Can't read from object, which is not map, but " + possibleMapWithYProperty);
             }
 
             return ((Map) possibleMapWithYProperty).get(yKey);
+        }
+    }
+
+    private static final class RawMapHolder {
+        Map<String, ?> map;
+
+        public Map<String, ?> getMap() {
+            return map;
+        }
+
+        public void setMap(Map<String, ?> map) {
+            this.map = map;
+        }
+    }
+
+    private static final class StringMapHolder {
+        Map<String, String> map;
+
+        public Map<String, String> getMap() {
+            return map;
+        }
+
+        public void setMap(Map<String, String> map) {
+            this.map = map;
+        }
+    }
+
+    private static final class NativeJsFunctionReader {
+        public NativeJsFunctionReader() {}
+
+        public void sumAndNotify(int left, int right, V8Function callBack) {
+            final int sum = left + right;
+            final List<Integer> callBackArg = Collections.singletonList(sum);
+
+            final V8 v8 = callBack.getRuntime();
+            final V8Array v8Args = V8ObjectUtils.toV8Array(v8, callBackArg);
+            callBack.call(v8, v8Args);
+
+            v8Args.release();
+            callBack.release();
+        }
+    }
+
+    private static final class NativeJsArrayReader {
+
+        private final int firstPostition = 0;
+
+        public NativeJsArrayReader() {}
+
+        public Object readJsArrayAsJavaArrayAndGet1st(Integer[] intsArray) {
+            return intsArray[firstPostition];
+        }
+
+        public Object readJsArrayAsJavaListAndGet1st(List<Integer> intsList) {
+            return intsList.get(firstPostition);
+        }
+
+        public Object readJsArrayAsJavaRawArrayAndGet1st(Object[] objectsArray) {
+            return objectsArray[firstPostition];
+        }
+
+        public Object readJsArrayAsRawJavaListAndGet1st(List objectsList) {
+            return objectsList.get(firstPostition);
+        }
+
+        public Object readJsArrayAsV8ArrayAndGet1st(V8Array array) {
+            final Object firstValue = array.get(firstPostition);
+            array.release();
+            return firstValue;
+        }
+
+        public Object readJsArrayAsJavaObjectAndTryGet1st(Object possibleList) {
+            if (!(possibleList instanceof List)) {
+                throw new IllegalArgumentException("Can't read from object, which is not list, but " + possibleList);
+            }
+
+            return ((List) possibleList).get(firstPostition);
+        }
+    }
+
+    private static final class JsNullReader {
+        public JsNullReader() {}
+
+        public int readAndGetInt(int arg) {
+            return arg;
+        }
+
+        public Integer readAndGetInteger(Integer arg) {
+            return arg;
+        }
+
+        public Foo readAndGetJavaClass(Foo arg) {
+            return arg;
+        }
+
+        public Foo readAndGetJavaFunctionalInterface(Foo arg) {
+            return arg;
         }
     }
 
@@ -475,11 +571,46 @@ public class V8JavaAdapterTest {
         Assert.assertEquals(V8.getUndefined(), v8.executeScript("var x = new IncompleteBeanTwo(); x.j = 6688; x.j;"));
     }
 
+//    - Test Map<String, Integer>
+////    - Test Map<String, Foo>
+
     @Test
     public void shouldReadJsObjectAsMap() {
         V8JavaAdapter.injectClass(NativeJsObjectReader.class, v8);
         final String done = "done";
         Assert.assertEquals(done, v8.executeScript("var x = new NativeJsObjectReader(); var y = x.readJsObjectAsMapAndGetY({y: '" + done + "'}); y;"));
+    }
+
+    @Test
+    public void shouldReadJsObjectAsMapWithPreviouslyInjectedObject() {
+        final String holderJsName = "holder";
+        final RawMapHolder holder = new RawMapHolder();
+        V8JavaAdapter.injectObject(holderJsName, holder, v8);
+
+        final WannabeBean wannabeBean = new WannabeBean();
+        final String wannabeBeanJsName = "bean";
+        V8JavaAdapter.injectObject(wannabeBeanJsName, wannabeBean, v8);
+
+        v8.executeVoidScript(("var y = " + holderJsName + ".setMap({y: " + wannabeBeanJsName + "}); y;"));
+
+        final Map<String, Object> expected = new HashMap<String, Object>();
+        expected.put("y", wannabeBean);
+        Assert.assertEquals(expected, holder.getMap());
+    }
+
+    @Test
+    public void shouldReadJsObjectAsGenericMap() {
+        final String holderJsName = "holder";
+        final StringMapHolder holder = new StringMapHolder();
+        V8JavaAdapter.injectObject(holderJsName, holder, v8);
+
+        final Integer one = 1;
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectCause(IsInstanceOf.<Throwable>instanceOf(IllegalArgumentException.class));
+        thrown.expectMessage(StringContains.containsString("No signature exists for setMap"));
+
+        v8.executeVoidScript(("var y = " + holderJsName + ".setMap({y: " + one + "}); y;"));
     }
 
     @Test
@@ -495,4 +626,117 @@ public class V8JavaAdapterTest {
         final String done = "done";
         Assert.assertEquals(done, v8.executeScript("var x = new NativeJsObjectReader(); var y = x.readJsObjectAsJavaObjectAndTryGetY({y: '" + done + "'}); y;"));
     }
+
+    @Test
+    public void shouldReadJsArrayAsJavaArray() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsJavaArrayAndGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadJsArrayAsJavaList() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsJavaListAndGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadJsArrayAsJavaRawArray() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsJavaRawArrayAndGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadJsArrayAsRawJavaList() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsRawJavaListAndGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadArrayAsV8Array() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsV8ArrayAndGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadArrayAsJavaObject() {
+        V8JavaAdapter.injectClass(NativeJsArrayReader.class, v8);
+        final Integer nine = 9;
+        Assert.assertEquals(nine, v8.executeScript("var x = new NativeJsArrayReader(); var y = x.readJsArrayAsJavaObjectAndTryGet1st([" + nine + ",8,7]); y;"));
+    }
+
+    @Test
+    public void shouldReadFunctionAsV8Function() {
+        V8JavaAdapter.injectClass(NativeJsFunctionReader.class, v8);
+
+        final AtomicInteger sumContainer = new AtomicInteger();
+        V8JavaAdapter.injectObject("sumContainer", sumContainer, v8);
+
+        final int one = 1;
+        final int two = 2;
+        final int sum = one + two;
+
+        v8.executeScript("var x = new NativeJsFunctionReader(); var y = x.sumAndNotify(" + one + ", " + two + ", function(sum) { sumContainer.set(sum); } ); y;");
+
+        Assert.assertEquals(sum, sumContainer.get());
+    }
+
+    @Test
+    public void shouldReadJsNullAsJavaNull() {
+        V8JavaAdapter.injectClass(JsNullReader.class, v8);
+
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInteger(null); y;"));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaClass(null); y;"));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaFunctionalInterface(null); y;"));
+    }
+
+    @Test
+    public void shouldThrowIllArgExWhenNullToPrimitive() {
+        V8JavaAdapter.injectClass(JsNullReader.class, v8);
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectCause(IsInstanceOf.<Throwable>instanceOf(IllegalArgumentException.class));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInt(null); y;"));
+    }
+
+    @Test
+    public void shouldReadUndefinedAsNull() {
+        V8JavaAdapter.injectClass(JsNullReader.class, v8);
+
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInteger(undefined); y;"));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaClass(undefined); y;"));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaFunctionalInterface(undefined); y;"));
+    }
+
+    @Test
+    public void shouldThrowIllArgExWhenUndefinedToPrimitive() {
+        V8JavaAdapter.injectClass(JsNullReader.class, v8);
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectCause(IsInstanceOf.<Throwable>instanceOf(IllegalArgumentException.class));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInt(undefined); y;"));
+    }
+
+    @Test
+    public void shouldReadJsLessArgsAsNull() {
+        V8JavaAdapter.injectClass(JsNullReader.class, v8);
+
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInteger(); y;"));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaClass(); y;"));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaFunctionalInterface(); y;"));
+    }
+
+    @Test
+    public void shouldThrowIllArgExWhenJsLessArgToPrimitive() {
+        V8JavaAdapter.injectClass(JsNullReader.class, v8);
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectCause(IsInstanceOf.<Throwable>instanceOf(IllegalArgumentException.class));
+        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInt(); y;"));
+    }
+
 }

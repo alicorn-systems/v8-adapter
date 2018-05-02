@@ -421,7 +421,7 @@ final class V8JavaClassProxy implements JavaCallback {
         Constructor coercedConstructor = null;
         for (Constructor constructor : classy.getConstructors()) {
             try {
-                coercedArguments = V8JavaObjectUtils.translateJavascriptArgumentsToJava(constructor.isVarArgs(), constructor.getParameterTypes(), parameters, receiver, cache);
+                coercedArguments = V8JavaObjectUtils.translateJavascriptArgumentsToJava(constructor.isVarArgs(), constructor.getParameterTypes(), constructor.getGenericParameterTypes(), parameters, receiver, cache);
                 coercedConstructor = constructor;
                 break;
             } catch (IllegalArgumentException e) {
