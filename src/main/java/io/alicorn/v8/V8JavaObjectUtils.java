@@ -416,7 +416,7 @@ public final class V8JavaObjectUtils {
             if (argument instanceof V8Function) {
                 final V8Function v8ArgumentFunction = (V8Function) argument;
 
-                //xxx: update check in case of java 8 upgrade:
+                //TODO: update check in case of java 8 upgrade:
                 if (javaArgumentType.isInterface() && javaArgumentType.getDeclaredMethods().length == 1) {
                     //Create a proxy class for the functional interface that wraps this V8Function.
                     V8FunctionInvocationHandler handler = new V8FunctionInvocationHandler(receiver, v8ArgumentFunction, cache);

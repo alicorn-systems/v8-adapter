@@ -34,7 +34,7 @@ final class V8JavaInstanceMethodProxy extends V8JavaMethodProxy {
                         break;
                     } catch (IllegalArgumentException e) {
                         //TODO: Exception to manage flow here is abysmal. Some critical information is being ignored which is unacceptable.
-                        //XXX: Try something similar to of io.reactivex.exceptions.CompositeException in order not to loose important exception in case of overloaded methods
+                        //TODO: Try something similar to of io.reactivex.exceptions.CompositeException in order not to loose important exception in case of overloaded methods
                         argumentsMismatchException = e;
                     }
                 }
@@ -57,7 +57,7 @@ final class V8JavaInstanceMethodProxy extends V8JavaMethodProxy {
                 //Invoke the method.
                 try {
                     return V8JavaObjectUtils.translateJavaArgumentToJavascript(coercedMethod.invoke(o, coercedArguments), V8JavaObjectUtils.getRuntimeSarcastically(receiver), cache);
-                //xxx: add more details of expected and actual arguments for existing try-catch and for IllegalArgumentException as well.
+                //TODO: add more details of expected and actual arguments for existing try-catch and for IllegalArgumentException as well.
                 } catch (IllegalAccessException e) {
                     throw new IllegalArgumentException("Method received invalid arguments [" + e.getMessage() + "]!");
                 } catch (InvocationTargetException e) {
