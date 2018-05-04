@@ -98,7 +98,16 @@ public final class V8JavaObjectUtils {
 
         @Override public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             try {
-                V8Array v8Args = translateJavaArgumentsToJavascript(args, V8JavaObjectUtils.getRuntimeSarcastically(receiver), cache);
+                final boolean varArgsOnlyMethod = method.isVarArgs() && method.getParameterTypes().length == 1;
+                final Object[] javaArgs;
+                if (!varArgsOnlyMethod) {
+                    javaArgs = args;
+                } else {
+                    //TODO: also consider "spreading" of var-args if there are another arguments before as for JS->Java case
+                    javaArgs = (Object[]) args[0];
+                }
+
+                V8Array v8Args = translateJavaArgumentsToJavascript(javaArgs, V8JavaObjectUtils.getRuntimeSarcastically(receiver), cache);
                 Object obj = function.call(receiver, v8Args);
                 if (!v8Args.isReleased()) {
                     v8Args.release();
@@ -366,7 +375,9 @@ public final class V8JavaObjectUtils {
     public static V8Array translateJavaArgumentsToJavascript(Object[] javaArguments, V8 v8, V8JavaCache cache) {
         V8Array v8Args = new V8Array(v8);
         for (Object argument : javaArguments) {
-            if (argument instanceof V8Value) {
+            if (argument == null) {
+                v8Args.pushNull();
+            } else if (argument instanceof V8Value) {
                 v8Args.push((V8Value) argument);
             } else if (argument instanceof String) {
                 v8Args.push((String) argument);
