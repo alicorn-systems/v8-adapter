@@ -375,7 +375,9 @@ public final class V8JavaObjectUtils {
     public static V8Array translateJavaArgumentsToJavascript(Object[] javaArguments, V8 v8, V8JavaCache cache) {
         V8Array v8Args = new V8Array(v8);
         for (Object argument : javaArguments) {
-            if (argument instanceof V8Value) {
+            if (argument == null) {
+                v8Args.pushNull();
+            } else if (argument instanceof V8Value) {
                 v8Args.push((V8Value) argument);
             } else if (argument instanceof String) {
                 v8Args.push((String) argument);
