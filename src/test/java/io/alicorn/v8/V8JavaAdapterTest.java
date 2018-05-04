@@ -24,6 +24,10 @@ public class V8JavaAdapterTest {
         int doInterface(int args);
     }
 
+    private interface CallBack {
+        Object call(Object... args);
+    }
+
     private static final class Foo {
         public int i;
         public Foo(int i) { this.i = i; }
@@ -33,6 +37,7 @@ public class V8JavaAdapterTest {
         public void add(Foo foo) { this.i += foo.i; }
         public void add(Bar bar) { this.i = bar.doInterface(this.i); }
         public void addBaz(Baz baz) { this.i = baz.doFooInterface(this).getI(); }
+        public Object invokeCallBack(CallBack callBack, Object... args) {return callBack.call(args); }
         public String doString(String s) { return s; }
         public int getI() { return i; }
         public Foo copy() { return new Foo(i); }
@@ -384,6 +389,19 @@ public class V8JavaAdapterTest {
     public void shouldHandleFunctionalArguments() {
         Assert.assertEquals(1500, v8.executeIntegerScript("var x = new Foo(3000); x.add(function(i) { return i / 2; }); x.getI();"));
         Assert.assertEquals(1500, v8.executeIntegerScript("var x = new Foo(3000); x.addBaz(function(foo) { return new Foo(foo.getI() / 2); }); x.getI();"));
+    }
+
+    @Test
+    public void shouldHandleFunctionalArgumentsWithVarArg() {
+        final int one = 1;
+        final int two = 2;
+        final int three = 3;
+        final int sum = one + two + three;
+
+        Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeCallBack(sumCallBack, " + one + ", " + two + ", " + three + ");"));
+
+        final int four = 4;
+        Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeCallBack(sumCallBack, " + one + ", " + two + ", " + three + ", " + four + ");"));
     }
 
     @Test
