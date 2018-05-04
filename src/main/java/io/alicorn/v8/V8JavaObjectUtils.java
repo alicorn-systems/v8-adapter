@@ -103,7 +103,7 @@ public final class V8JavaObjectUtils {
                 if (!varArgsOnlyMethod) {
                     javaArgs = args;
                 } else {
-                    //XXX: also consider "spreading" of var-args if there are another arguments before as for JS->Java case
+                    //TODO: also consider "spreading" of var-args if there are another arguments before as for JS->Java case
                     javaArgs = (Object[]) args[0];
                 }
 
