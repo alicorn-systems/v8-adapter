@@ -6,6 +6,7 @@ import io.alicorn.v8.annotations.JSDisableMethodAutodetect;
 import io.alicorn.v8.annotations.JSGetter;
 import io.alicorn.v8.annotations.JSSetter;
 import io.alicorn.v8.annotations.JSStaticFunction;
+import io.alicorn.v8.utils.V8Helper;
 import org.hamcrest.core.IsInstanceOf;
 import org.hamcrest.core.StringContains;
 import org.junit.*;
@@ -757,4 +758,38 @@ public class V8JavaAdapterTest {
         Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInt(); y;"));
     }
 
+    @Test
+    public void shouldInjectMapAsMapWithJsObjectApi() {
+        final HashMap<String, Object> testMap = new HashMap<String, Object>();
+        final String key = "myKey";
+        final String value = "myValue";
+        testMap.put(key, value);
+
+        V8JavaAdapter.injectObject("testMap", testMap, v8);
+
+        Assert.assertEquals(value, v8.executeScript("testMap.get( '" + key + "' )"));
+
+        Assume.assumeTrue(V8Helper.INSTANCE.isSupportsProxy(v8));
+        Assert.assertEquals(value, v8.executeScript("testMap[ '" + key + "' ]"));
+        Assert.assertEquals(value, v8.executeScript("testMap." + key));
+    }
+
+    @Test
+    public void shouldInjectListAsListWithJsArrayApi() {
+        Assume.assumeTrue(V8Helper.INSTANCE.isSupportsProxy(v8));
+
+        final List<String> testList = new ArrayList<String>();
+        final String first = "foo";
+        final String second = "bar";
+        testList.add(first);
+        testList.add(second);
+
+        V8JavaAdapter.injectObject("testList", testList, v8);
+
+
+        final int indexOfSecond = testList.indexOf(second);
+        Assert.assertEquals(second, v8.executeScript("testList.get(" + indexOfSecond + ")"));
+        Assume.assumeTrue(V8Helper.INSTANCE.isSupportsProxy(v8));
+        Assert.assertEquals(second, v8.executeScript("testList[ '" + indexOfSecond + "' ]"));
+    }
 }
