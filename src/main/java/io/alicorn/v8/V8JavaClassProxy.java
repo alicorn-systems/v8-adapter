@@ -384,9 +384,10 @@ final class V8JavaClassProxy implements JavaCallback {
 
         // Register properties (getters and setters).
         for (String methodName : gettersAndSetters) {
+            final V8 v8 = V8JavaObjectUtils.getRuntimeSarcastically(jsObject);
 
             // Create a new JS object.
-            V8Object methodProperty = new V8Object(jsObject.getRuntime());
+            V8Object methodProperty = new V8Object(v8);
 
             // Insert getter (if available).
             if (gettersMap.containsKey(methodName)) {
@@ -399,7 +400,7 @@ final class V8JavaClassProxy implements JavaCallback {
             }
 
             // Define property on JS object.
-            V8Object object = V8JavaObjectUtils.getRuntimeSarcastically(jsObject).getObject("Object");
+            V8Object object = v8.getObject("Object");
             V8Object ret = (V8Object) object.executeJSFunction("defineProperty", jsObject, methodName, methodProperty);
 
             // Release garbage.

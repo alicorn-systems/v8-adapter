@@ -148,8 +148,10 @@ public final class V8JavaAdapter {
         //Calculate V8-friendly full class names.
         String v8FriendlyClassname = classy.getName().replaceAll("\\.+", "_");
 
+        final V8 v8 = V8JavaObjectUtils.getRuntimeSarcastically(rootObject);
+
         // Determine cache to use.
-        V8JavaCache cache = getCacheForRuntime(rootObject.getRuntime());
+        V8JavaCache cache = getCacheForRuntime(v8);
 
         //Register the class proxy.
         V8JavaClassProxy proxy;
@@ -178,7 +180,8 @@ public final class V8JavaAdapter {
             script.append("\n};");
 
             //Evaluate the script to create a new constructor function.
-            V8JavaObjectUtils.getRuntimeSarcastically(rootObject).executeVoidScript(script.toString());
+
+            v8.executeVoidScript(script.toString());
 
             //Build up static methods if needed.
             if (proxy.getInterceptor() == null) {
