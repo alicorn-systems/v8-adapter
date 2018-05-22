@@ -2,6 +2,8 @@ package io.alicorn.v8;
 
 import com.eclipsesource.v8.*;
 import io.alicorn.v8.annotations.*;
+import io.alicorn.v8.utils.NamingHelper;
+import io.alicorn.v8.utils.V8Helper;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
@@ -22,6 +24,21 @@ final class V8JavaClassProxy implements JavaCallback {
     private final static String BEAN_SETTER_PREFIX = "set";
     private final static String BEAN_GETTER_PREFIX = "get";
     private final static String BEAN_BOOLEAN_GETTER_PREFIX = "is";
+    /**
+     * Adds js object api to java map based js objects. Keeps ability to assign and invoke js functions.
+     */
+    private static final String mapToJsObjectHandler = "{" +
+            "get: (target, propKey) => { const prop = target[propKey]; return (prop instanceof Function) ? (...args) => prop.apply(target, args) : target.get(propKey); }, " +
+            "set: (target, propKey, newVal) => newVal instanceof Function ? target[propKey] = newVal : target.put(propKey, newVal) " +
+            "}";
+
+    /**
+     * Adds js array api to java list based js objects. Keeps ability to set and get functions and String properties as it's allowed on normal JS arrays.
+     */
+    private static final String listToJsArrayHandler = "{" +
+            "get: (target, propKey) => { const prop = target[propKey]; return (prop instanceof Function) ? (...args) => prop.apply(target, args) : isNaN(propKey) ? target[propKey] : target.get(Number(propKey)); }, " +
+            "set: (target, propKey, newVal) => isNaN(propKey) ? target[propKey] = newVal : target.set(Number(propKey), newVal)" +
+            "}";
 
     //Class represented by this proxy.
     private final Class<?> classy;
@@ -302,6 +319,61 @@ final class V8JavaClassProxy implements JavaCallback {
     }
 
     /**
+     * 1st Registers java object's methods to js object.
+     * Then adds JS Object/JS Array api to js object as JS proxy if Java object is Map or list and it's requested (jsApiProxyVariableName is not null).
+     * Finally Link's js object (or proxy) and java object using global cache.
+     *
+     * @throws IllegalArgumentException
+     */
+    public String attachJavaObjectToJsObject(Object javaObject, V8Object jsObject, String jsApiProxyVariableName) throws IllegalArgumentException {
+        registerJavaObjectMethodsToJsObject(javaObject, jsObject);
+
+        final V8Object jsObjectOrJsProxy = createJsProxyIfNeeded(jsObject, javaObject, jsApiProxyVariableName);
+        String instanceAddress = linkJavaObjectToJsObject(javaObject, jsObjectOrJsProxy);
+
+        //release proxy if it was created
+        if (jsApiProxyVariableName != null) jsObjectOrJsProxy.release();
+        return instanceAddress;
+    }
+
+    private String linkJavaObjectToJsObject(Object javaObject, V8Object jsObjectOrJsProxy) {
+        //Register the object's handle.
+        String instanceAddress = NamingHelper.INSTANCE.randomInstanceAddress();
+        jsObjectOrJsProxy.add(V8JavaObjectUtils.JAVA_OBJECT_HANDLE_ID, instanceAddress);
+        WeakReference<Object> reference = new WeakReference<Object>(javaObject);
+        cache.identifierToJavaObjectMap.put(instanceAddress, reference);
+        cache.v8ObjectToIdentifierMap.put(javaObject, instanceAddress);
+
+        //Add a handle to the object on the V8 context.
+
+        final V8 v8 = V8JavaObjectUtils.getRuntimeSarcastically(jsObjectOrJsProxy);
+        v8.add(instanceAddress, jsObjectOrJsProxy);
+        return instanceAddress;
+    }
+
+    private V8Object createJsProxyIfNeeded(V8Object jsObject, Object javaObject, String variableName) {
+        final V8 v8 = V8JavaObjectUtils.getRuntimeSarcastically(jsObject);
+
+        if (variableName == null
+                || !V8Helper.INSTANCE.isSupportsProxy(v8)
+                || !(javaObject instanceof Map) && !(javaObject instanceof List)) {
+            return jsObject;
+        }
+
+        return javaObject instanceof Map
+                ? createJsProxy(variableName, mapToJsObjectHandler, v8)
+                : createJsProxy(variableName, listToJsArrayHandler, v8);
+    }
+
+    /**
+     * Appends creation of the proxy for variableName to the script. Proxy name is set to variableName.
+     */
+    private V8Object createJsProxy(String variableName, String proxyHandler, V8 v8) {
+        V8Object jsProxyObject = v8.executeObjectScript("var " + variableName + " = new Proxy(" + variableName + "," + proxyHandler + "); " + variableName + ";");
+        return jsProxyObject;
+    }
+
+    /**
      * Attaches a Java object to a JS object, treating the JS object as if it
      * were a proxy for the Java object.
      *
@@ -312,57 +384,46 @@ final class V8JavaClassProxy implements JavaCallback {
      *
      * @throws IllegalArgumentException If the passed object is not an instance of the class this proxy represents.
      */
-    public String attachJavaObjectToJsObject(Object javaObject, V8Object jsObject) throws IllegalArgumentException {
-        if (javaObject.getClass().equals(classy)) {
-            // Register its methods as properties on itself if it doesn't have an interceptor.
-            if (interceptor == null) {
+    private void registerJavaObjectMethodsToJsObject(Object javaObject, V8Object jsObject) throws IllegalArgumentException {
+        if (!javaObject.getClass().equals(classy)) {
+            throw new IllegalArgumentException(String.format("Cannot attach Java object of type [%s] using proxy for type [%s]",
+                    javaObject.getClass().getName(), classy.getName()));
+        }
 
-                // Register methods.
-                for (String m : instanceMethods.keySet()) {
-                    jsObject.registerJavaMethod(instanceMethods.get(m).getCallbackForInstance(javaObject), m);
-                }
+        // Register its methods as properties on itself if it doesn't have an interceptor.
+        final V8 v8 = V8JavaObjectUtils.getRuntimeSarcastically(jsObject);
+        if (interceptor == null) {
 
-                // Inject any getter/setter properties.
-                injectGetterAndSetterProperties(javaObject, jsObject);
-
-                // Otherwise, register the interceptor's callback information.
-            } else {
-                String interceptorAddress = "CICHID" + UUID.randomUUID().toString().replaceAll("-", "");
-                jsObject.add(V8JavaObjectUtils.JAVA_CLASS_INTERCEPTOR_CONTEXT_HANDLE_ID, interceptorAddress);
-                V8JavaClassInterceptorContext context = new V8JavaClassInterceptorContext();
-                interceptContexts.put(interceptorAddress, context);
-
-                // Invoke the injection callback if present.
-                Object function = jsObject.get("onJ2V8Inject");
-                if (function instanceof V8Function) {
-                    // Despite being unchecked, we can guarantee that this is correct so long as the provided
-                    // interceptor is of the correct type. TODO: Maybe we could add an assert on the interceptor type?
-                    interceptor.onInject(context, classy.cast(javaObject));
-                    V8Array args = V8JavaObjectUtils.translateJavaArgumentsToJavascript(new Object[] {context}, V8JavaObjectUtils.getRuntimeSarcastically(jsObject), cache);
-                    ((V8Function) function).call(jsObject, args);
-                    args.release();
-                }
-
-                // Clean up.
-                if (function instanceof V8Value) {
-                    ((V8Value) function).release();
-                }
+            // Register methods.
+            for (String m : instanceMethods.keySet()) {
+                jsObject.registerJavaMethod(instanceMethods.get(m).getCallbackForInstance(javaObject), m);
             }
 
-            //Register the object's handle.
-            String instanceAddress = "OHID" + UUID.randomUUID().toString().replaceAll("-", "");
-            jsObject.add(V8JavaObjectUtils.JAVA_OBJECT_HANDLE_ID, instanceAddress);
-            WeakReference<Object> reference = new WeakReference<Object>(javaObject);
-            cache.identifierToJavaObjectMap.put(instanceAddress, reference);
-            cache.v8ObjectToIdentifierMap.put(javaObject, instanceAddress);
+            // Inject any getter/setter properties.
+            injectGetterAndSetterProperties(javaObject, jsObject);
 
-            //Add a handle to the object on the V8 context.
-            V8JavaObjectUtils.getRuntimeSarcastically(jsObject).add(instanceAddress, jsObject);
-
-            return instanceAddress;
+            // Otherwise, register the interceptor's callback information.
         } else {
-            throw new IllegalArgumentException(String.format("Cannot attach Java object of type [%s] using proxy for type [%s]",
-                                                             javaObject.getClass().getName(), classy.getName()));
+            String interceptorAddress = NamingHelper.INSTANCE.randomInterceptorAddress();
+            jsObject.add(V8JavaObjectUtils.JAVA_CLASS_INTERCEPTOR_CONTEXT_HANDLE_ID, interceptorAddress);
+            V8JavaClassInterceptorContext context = new V8JavaClassInterceptorContext();
+            interceptContexts.put(interceptorAddress, context);
+
+            // Invoke the injection callback if present.
+            Object function = jsObject.get("onJ2V8Inject");
+            if (function instanceof V8Function) {
+                // Despite being unchecked, we can guarantee that this is correct so long as the provided
+                // interceptor is of the correct type. TODO: Maybe we could add an assert on the interceptor type?
+                interceptor.onInject(context, classy.cast(javaObject));
+                V8Array args = V8JavaObjectUtils.translateJavaArgumentsToJavascript(new Object[] {context}, v8, cache);
+                ((V8Function) function).call(jsObject, args);
+                args.release();
+            }
+
+            // Clean up.
+            if (function instanceof V8Value) {
+                ((V8Value) function).release();
+            }
         }
     }
 
@@ -436,7 +497,8 @@ final class V8JavaClassProxy implements JavaCallback {
 
         try {
             final Object instance = coercedConstructor.newInstance(coercedArguments);
-            attachJavaObjectToJsObject(instance, receiver);
+            //When Java object is created expicilty in JS using constructor - no JS Object api is aded to Map, etc.
+            attachJavaObjectToJsObject(instance, receiver, null);
 
             // TODO: Is this the best way to handle cleanup of Java objects for garbage collection?
             // Give it the ability to release itself.

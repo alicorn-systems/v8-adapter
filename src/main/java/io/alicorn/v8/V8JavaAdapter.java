@@ -1,7 +1,7 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.*;
-import io.alicorn.v8.utils.V8Helper;
+import io.alicorn.v8.utils.NamingHelper;
 
 import java.util.*;
 
@@ -14,15 +14,6 @@ public final class V8JavaAdapter {
 
     // Mapping of V8 instances to their associated caches.
     private static final Map<V8, V8JavaCache> runtimeToCacheMap = new WeakHashMap<V8, V8JavaCache>();
-
-    /**
-     * Adds js object api to java map based js objects.
-     */
-    private static final String mapToJsObjectHandler = "{ get: (obj, prop) => obj.get(prop), set: (obj, prop, newval) => obj.put(prop, newval)}";
-    /**
-     * Adds js array api to java list based js objects.
-     */
-    private static final String listToJsArrayHandler = "{ get: (obj, prop) => obj.get(prop), set: (obj, prop, newval) => obj.set(prop, newval)}";
 
     /**
      * Returns the {@link V8JavaCache} associated with a given runtime.
@@ -90,9 +81,7 @@ public final class V8JavaAdapter {
                         rootObject);
         }
 
-        if (name == null) {
-            name = "TEMP" + UUID.randomUUID().toString().replaceAll("-", "");
-        }
+        if (name == null) name = NamingHelper.INSTANCE.randomVarName();
 
         //Build an empty object instance.
         V8JavaClassProxy proxy = cache.cachedV8JavaClasses.get(object.getClass());
@@ -104,30 +93,12 @@ public final class V8JavaAdapter {
             script.append(proxy.getInterceptor().getConstructorScriptBody());
         }
 
-        script.append("\n}; ");
-
-        if (V8Helper.INSTANCE.isSupportsProxy(v8)) {
-            if (object instanceof Map) {
-                appendProxy(script, name, mapToJsObjectHandler);
-            } else if (object instanceof List) {
-                appendProxy(script, name, listToJsArrayHandler);
-            }
-        }
-
-        //returns newly created js object to Java
-        script.append(name).append(";");
+        script.append("\n}; ").append(name).append(";");
 
         V8Object jsObject = v8.executeObjectScript(script.toString());
-        String id = proxy.attachJavaObjectToJsObject(object, jsObject);
+        String id = proxy.attachJavaObjectToJsObject(object, jsObject, name);
         jsObject.release();
         return id;
-    }
-
-    /**
-     * Appends creation of the proxy for variableName to the script. Proxy name is set to variableName.
-     */
-    private static void appendProxy(StringBuilder script, String variableName, String proxyHandler) {
-        script.append("var ").append(variableName).append(" = new Proxy(").append(variableName).append(",").append(proxyHandler).append("); ");
     }
 
     /**

@@ -29,4 +29,6 @@ public class V8Helper {
 
         return supportsProxy;
     }
+
+    //check if V8JavaObjectUtils.getRuntimeSarcastically() is still needed and if so - move the method here for clarity.
 }
