@@ -759,19 +759,76 @@ public class V8JavaAdapterTest {
     }
 
     @Test
-    public void shouldInjectMapAsMapWithJsObjectApi() {
+    public void shouldInjectMapAsMap() {
         final HashMap<String, Object> testMap = new HashMap<String, Object>();
         final String key = "myKey";
         final String value = "myValue";
         testMap.put(key, value);
 
+        final String newKey = "newKey";
+        final String newValue = "newValue";
+
         V8JavaAdapter.injectObject("testMap", testMap, v8);
 
         Assert.assertEquals(value, v8.executeScript("testMap.get( '" + key + "' )"));
 
+        Assert.assertEquals(newValue, v8.executeScript("testMap.put( '" + newKey + "' , '" + newValue + "' ); testMap.get( '" + newKey + "' ); "));
+        Assert.assertEquals(newValue, testMap.get(newKey));
+
+        Assert.assertEquals(newValue, v8.executeScript("testMap.executeGet = function(key) {return this.get(key)}; testMap.executeGet( '" + newKey + "' ); "));
+    }
+
+
+    @Test
+    public void shouldInjectMapAsMapWithJsObjectApi() {
         Assume.assumeTrue(V8Helper.INSTANCE.isSupportsProxy(v8));
+
+        final HashMap<String, Object> testMap = new HashMap<String, Object>();
+        final String key = "myKey";
+        final String value = "myValue";
+        testMap.put(key, value);
+
+        final String newKey = "newKey";
+        final String newValue = "newValue";
+
+        V8JavaAdapter.injectObject("testMap", testMap, v8);
+
         Assert.assertEquals(value, v8.executeScript("testMap[ '" + key + "' ]"));
         Assert.assertEquals(value, v8.executeScript("testMap." + key));
+
+        Assert.assertEquals(newValue, v8.executeScript("testMap[ '" + newKey + "' ] = '" + newValue + "' ; testMap[ '" + newKey + "' ]"));
+        Assert.assertEquals(newValue, testMap.get(newKey));
+
+        Assert.assertEquals(newValue, v8.executeScript("testMap." + key + " = '" + newValue + "' ; testMap[ '" + key + "' ]"));
+        Assert.assertEquals(newValue, testMap.get(newKey));
+    }
+
+    @Test
+    public void shouldInjectListAsList() {
+        final List<String> testList = new ArrayList<String>();
+        final String first = "foo";
+        final String second = "bar";
+        testList.add(first);
+        testList.add(second);
+        final int indexOfSecond = testList.indexOf(second);
+
+        final String newSecond = "newSecond";
+
+        final String stringKey = "stringKey";
+        final String stringValue = "stringValue";
+
+        V8JavaAdapter.injectObject("testList", testList, v8);
+
+
+
+        Assert.assertEquals(second, v8.executeScript("testList.get(" + indexOfSecond + ")"));
+        Assert.assertEquals(newSecond, v8.executeScript("testList.set(" + indexOfSecond + ", '" + newSecond + "'); testList.get(" + indexOfSecond + ")"));
+        Assert.assertEquals(newSecond, testList.get(indexOfSecond));
+
+        //it's allowed to assign function to js array
+        Assert.assertEquals(newSecond, v8.executeScript("testList.executeGet = function(key) {return this.get(key)}; testList.executeGet( " + indexOfSecond + " ); "));
+        //it's allowed to assign non-integer key-value to js array
+        Assert.assertEquals(stringValue, v8.executeScript("testList." + stringKey + " = '" + stringValue + "' ; testList[ '" + stringKey + "' ]"));
     }
 
     @Test
@@ -783,13 +840,15 @@ public class V8JavaAdapterTest {
         final String second = "bar";
         testList.add(first);
         testList.add(second);
+        final int indexOfSecond = testList.indexOf(second);
+
+        final String newSecond = "newSecond";
 
         V8JavaAdapter.injectObject("testList", testList, v8);
 
-
-        final int indexOfSecond = testList.indexOf(second);
-        Assert.assertEquals(second, v8.executeScript("testList.get(" + indexOfSecond + ")"));
-        Assume.assumeTrue(V8Helper.INSTANCE.isSupportsProxy(v8));
         Assert.assertEquals(second, v8.executeScript("testList[ '" + indexOfSecond + "' ]"));
+
+        Assert.assertEquals(newSecond, v8.executeScript("testList[" + indexOfSecond + "] = '" + newSecond + "' ; testList[" + indexOfSecond + "]"));
+        Assert.assertEquals(newSecond, testList.get(indexOfSecond));
     }
 }
