@@ -1,6 +1,7 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.*;
+import io.alicorn.v8.utils.NamingHelper;
 
 import java.util.*;
 
@@ -57,9 +58,10 @@ public final class V8JavaAdapter {
      * @return String identifier of the injected object.
      */
     public static String injectObject(String name, Object object, V8Object rootObject) {
+        final V8 v8 = V8JavaObjectUtils.getRuntimeSarcastically(rootObject);
 
         // Determine cache to use.
-        V8JavaCache cache = getCacheForRuntime(rootObject.getRuntime());
+        V8JavaCache cache = getCacheForRuntime(v8);
 
         //TODO: Add special handlers for N-dimensional and primitive arrays.
         //TODO: This should inject arrays as JS arrays, not lists. Meh.
@@ -67,10 +69,9 @@ public final class V8JavaAdapter {
         //TODO: This is terrible.
         if (object.getClass().isArray()) {
             Object[] rawArray = (Object[]) object;
-            List<Object> injectedArray = new ArrayList<Object>(rawArray.length);
-            for (Object obj : rawArray) {
-                injectedArray.add(obj);
-            }
+
+            List<Object> injectedArray = new ArrayList<Object>(Arrays.asList(rawArray));
+
             return injectObject(name, injectedArray, rootObject);
         } else {
             injectClass("".equals(object.getClass().getSimpleName()) ?
@@ -80,9 +81,7 @@ public final class V8JavaAdapter {
                         rootObject);
         }
 
-        if (name == null) {
-            name = "TEMP" + UUID.randomUUID().toString().replaceAll("-", "");
-        }
+        if (name == null) name = NamingHelper.INSTANCE.randomVarName();
 
         //Build an empty object instance.
         V8JavaClassProxy proxy = cache.cachedV8JavaClasses.get(object.getClass());
@@ -96,9 +95,9 @@ public final class V8JavaAdapter {
 
         script.append("\n}; ").append(name).append(";");
 
-        V8Object other = V8JavaObjectUtils.getRuntimeSarcastically(rootObject).executeObjectScript(script.toString());
-        String id = proxy.attachJavaObjectToJsObject(object, other);
-        other.release();
+        V8Object jsObject = v8.executeObjectScript(script.toString());
+        String id = proxy.attachJavaObjectToJsObject(object, jsObject, name);
+        jsObject.release();
         return id;
     }
 
@@ -120,8 +119,10 @@ public final class V8JavaAdapter {
         //Calculate V8-friendly full class names.
         String v8FriendlyClassname = classy.getName().replaceAll("\\.+", "_");
 
+        final V8 v8 = V8JavaObjectUtils.getRuntimeSarcastically(rootObject);
+
         // Determine cache to use.
-        V8JavaCache cache = getCacheForRuntime(rootObject.getRuntime());
+        V8JavaCache cache = getCacheForRuntime(v8);
 
         //Register the class proxy.
         V8JavaClassProxy proxy;
@@ -150,7 +151,8 @@ public final class V8JavaAdapter {
             script.append("\n};");
 
             //Evaluate the script to create a new constructor function.
-            V8JavaObjectUtils.getRuntimeSarcastically(rootObject).executeVoidScript(script.toString());
+
+            v8.executeVoidScript(script.toString());
 
             //Build up static methods if needed.
             if (proxy.getInterceptor() == null) {
