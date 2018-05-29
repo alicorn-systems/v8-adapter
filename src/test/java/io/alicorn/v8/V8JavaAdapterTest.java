@@ -13,6 +13,7 @@ import org.junit.rules.ExpectedException;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class V8JavaAdapterTest {
 //Setup classes////////////////////////////////////////////////////////////////
@@ -757,4 +758,61 @@ public class V8JavaAdapterTest {
         Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInt(); y;"));
     }
 
+
+    @Test
+    public void shouldCustomizeJavaToJSTransformation() {
+        final Map<String, Object> mapToExportToJs = new HashMap<String, Object>();
+
+        final String stringKey = "stringKey";
+        final String stringValue = "stringValue";
+        mapToExportToJs.put(stringKey, stringValue);
+
+        final List<String> listToExportToJs = new ArrayList<String>();
+        final String list1stElement = "myElement";
+        listToExportToJs.add(list1stElement);
+
+        final String listKey = "listKey";
+        mapToExportToJs.put(listKey, listToExportToJs);
+
+        final RawMapHolder mapProvider = new RawMapHolder();
+        mapProvider.setMap(mapToExportToJs);
+
+        final String mapProviderJsName = "mapProvider";
+        V8JavaAdapter.injectObject(mapProviderJsName, mapProvider, v8);
+
+        final String holderJsName = "holder";
+        AtomicReference<Object> holder = new AtomicReference<Object>();
+        V8JavaAdapter.injectObject(holderJsName, holder, v8);
+
+
+        //check default transformation behaviour
+        v8.executeVoidScript("var exportedMap = mapProvider.getMap(); var value = exportedMap.get('" + stringKey + "'); holder.set(value)");
+        Assert.assertEquals(stringValue, holder.get());
+
+        v8.executeVoidScript("var exportedMap = mapProvider.getMap(); var value = exportedMap.get('" + listKey + "').get(0); holder.set(value)");
+        Assert.assertEquals(list1stElement, holder.get());
+
+        //use custom transformation behaviour
+        V8JavaAdapter.setJsTransformation(Map.class, new JavaToJsTransformation<Map>() {
+            @Override
+            public V8Object transform(Map javaObject) {
+                //TODO: Implement v8-adapter's variant of V8ObjectUtils.toV8Object(), which handles conversion of random objects.
+                return V8ObjectUtils.toV8Object(v8, javaObject);
+            }
+        });
+        V8JavaAdapter.setJsTransformation(List.class, new JavaToJsTransformation<List>() {
+            @Override
+            public V8Object transform(List javaObject) {
+                //TODO: Implement v8-adapter's variant of V8ObjectUtils.toV8Array(), which handles conversion of random objects.
+                return V8ObjectUtils.toV8Array(v8, javaObject);
+            }
+        });
+
+        //check customized transformation behaviour
+        v8.executeVoidScript("var exportedMap = mapProvider.getMap(); var value = exportedMap['" + stringKey + "']; holder.set(value)");
+        Assert.assertEquals(stringValue, holder.get());
+
+        v8.executeVoidScript("var exportedMap = mapProvider.getMap(); var value = exportedMap['" + listKey + "'][0]; holder.set(value)");
+        Assert.assertEquals(list1stElement, holder.get());
+    }
 }

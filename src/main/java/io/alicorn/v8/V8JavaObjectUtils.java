@@ -348,14 +348,19 @@ public final class V8JavaObjectUtils {
             if (isBasicallyPrimitive(javaArgument)) {
                 return javaArgument;
             } else {
-                String key = cache.v8ObjectToIdentifierMap.get(javaArgument);
-                if (key != null) {
-                    V8Object object = (V8Object) v8.get(key);
-                    cache.cachedV8JavaClasses.get(javaArgument.getClass()).writeInjectedInterceptor(object);
-                    return object;
+                final JavaToJsTransformation transformation = V8JavaAdapter.getCustomJsTransformation(javaArgument);
+                if (transformation == null) {
+                    String key = cache.v8ObjectToIdentifierMap.get(javaArgument);
+                    if (key != null) {
+                        V8Object object = (V8Object) v8.get(key);
+                        cache.cachedV8JavaClasses.get(javaArgument.getClass()).writeInjectedInterceptor(object);
+                        return object;
+                    } else {
+                        key = V8JavaAdapter.injectObject(null, javaArgument, v8);
+                        return v8.get(key);
+                    }
                 } else {
-                    key = V8JavaAdapter.injectObject(null, javaArgument, v8);
-                    return v8.get(key);
+                    return transformation.transform(javaArgument);
                 }
             }
         }
