@@ -14,6 +14,11 @@ public final class V8JavaAdapter {
     // Mapping of V8 instances to their associated caches.
     private static final Map<V8, V8JavaCache> runtimeToCacheMap = new WeakHashMap<V8, V8JavaCache>();
 
+    /***
+     * Set-up is global, but not per-v8 instance for simplicity.
+     */
+    private static final Map <Class<?>, JavaToJsTransformation> customJsTransformations = new HashMap<Class<?>, JavaToJsTransformation>();
+
     /**
      * Returns the {@link V8JavaCache} associated with a given runtime.
      *
@@ -31,6 +36,17 @@ public final class V8JavaAdapter {
             runtimeToCacheMap.put(v8, cache);
             return cache;
         }
+    }
+
+    /**
+     * @return custom transformation if any matching object's class or null otherwise.
+     */
+    static JavaToJsTransformation getCustomJsTransformation(Object javaObjectToTransform) {
+        for (Map.Entry<Class<?>, JavaToJsTransformation> classToTransformation : customJsTransformations.entrySet()) {
+            if (classToTransformation.getKey().isInstance(javaObjectToTransform)) return classToTransformation.getValue();
+        }
+
+        return null;
     }
 
     /**
@@ -175,5 +191,13 @@ public final class V8JavaAdapter {
 
     public static void injectClass(Class<?> classy, V8Object object) {
         injectClass(classy.getSimpleName(), classy, null, object);
+    }
+
+    /**
+     * Set Custom transformation for classes where other the default result is expected, e.g. Java List to JS Array, etc.
+     * By default Java object "exported" to JS runtime as js object with same set of the methods.
+     */
+    public static <T> void setJsTransformation(Class<T> classy, JavaToJsTransformation<T> transformation) {
+        customJsTransformations.put(classy, transformation);
     }
 }
