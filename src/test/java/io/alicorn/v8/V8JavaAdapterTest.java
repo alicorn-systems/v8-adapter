@@ -11,6 +11,7 @@ import org.hamcrest.core.StringContains;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
+import java.io.File;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -740,15 +741,6 @@ public class V8JavaAdapterTest {
     }
 
     @Test
-    public void shouldReadJsLessArgsAsNull() {
-        V8JavaAdapter.injectClass(JsNullReader.class, v8);
-
-        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInteger(); y;"));
-        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaClass(); y;"));
-        Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetJavaFunctionalInterface(); y;"));
-    }
-
-    @Test
     public void shouldThrowIllArgExWhenJsLessArgToPrimitive() {
         V8JavaAdapter.injectClass(JsNullReader.class, v8);
 
@@ -757,4 +749,9 @@ public class V8JavaAdapterTest {
         Assert.assertEquals(null, v8.executeScript("var x = new JsNullReader(); var y = x.readAndGetInt(); y;"));
     }
 
+    @Test
+    public void shouldChooseCorrectConstructorAndNotPassNulls() {
+        V8JavaAdapter.injectClass(File.class, v8);
+        v8.executeVoidScript("var f = new File(\"test.txt\");");
+    }
 }
