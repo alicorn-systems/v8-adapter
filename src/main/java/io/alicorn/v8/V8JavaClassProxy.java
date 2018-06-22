@@ -369,9 +369,6 @@ final class V8JavaClassProxy implements JavaCallback {
     /**
      * Injects getter and setter properties into the given JS object.
      *
-     * The getters and setters that are injected are based on prior invocations of
-     * {@link #registerGettersAndSetters(V8JavaInstanceMethodProxy)}.
-     *
      * @param javaObject Java object which is "injected" in JS. Required for
      *                   re-direction of the property access to it's getters/setters.
      * @param jsObject JS object created for dispatching calls from JS runtime to
@@ -448,11 +445,11 @@ final class V8JavaClassProxy implements JavaCallback {
 //                }
 //            }, "$release");
         } catch (InstantiationException e) {
-            throw new IllegalArgumentException("Constructor received invalid arguments!");
+            throw new IllegalArgumentException("Constructor received invalid arguments!", e);
         } catch (IllegalAccessException e) {
-            throw new IllegalArgumentException("Constructor received invalid arguments!");
+            throw new IllegalArgumentException("Constructor received invalid arguments!", e);
         } catch (InvocationTargetException e) {
-            throw new IllegalArgumentException("Constructor received invalid arguments!");
+            throw new IllegalArgumentException("Constructor received invalid arguments!", e);
         }
 
         return null;
