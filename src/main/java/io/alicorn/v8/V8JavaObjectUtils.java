@@ -345,8 +345,20 @@ public final class V8JavaObjectUtils {
      */
     public static Object translateJavaArgumentToJavascript(Object javaArgument, V8 v8, V8JavaCache cache) {
         if (javaArgument != null) {
-            if (isBasicallyPrimitive(javaArgument)) {
+
+            // Longs must be explicitly widened to the Double type because of JS's internal representation of numbers.
+            if (javaArgument instanceof Long) {
+                return ((Long) javaArgument).doubleValue();
+
+            // Floats must be explicitly widened to the Double type because of JS's internal representation of numbers.
+            } else if (javaArgument instanceof Float) {
+                return ((Float) javaArgument).doubleValue();
+
+            // Other primitives may be returned as-is.
+            } else if (isBasicallyPrimitive(javaArgument)) {
                 return javaArgument;
+
+            // Objects must be bound to their JS objects.
             } else {
                 String key = cache.v8ObjectToIdentifierMap.get(javaArgument);
                 if (key != null) {
