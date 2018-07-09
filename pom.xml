@@ -4,7 +4,7 @@
 
     <groupId>io.alicorn.v8</groupId>
     <artifactId>v8-adapter</artifactId>
-    <version>1.58-SNAPSHOT</version>
+    <version>1.59-SNAPSHOT</version>
 
     <!-- Metadata -->
     <organization>
