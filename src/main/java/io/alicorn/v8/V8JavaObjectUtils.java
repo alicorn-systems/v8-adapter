@@ -1,7 +1,6 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.*;
-import com.eclipsesource.v8.utils.V8ObjectUtils;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.*;
@@ -63,29 +62,55 @@ public final class V8JavaObjectUtils {
      * Lightweight invocation handler for translating certain V8 functions to
      * Java functional interfaces.
      */
-    private static class V8FunctionInvocationHandler implements InvocationHandler {
+    private static class V8FunctionInvocationHandler implements InvocationHandler, Releasable {
+        /**
+         *  Methods like .toString() or .release() should be invoked from the current class
+         *  (instead of sending to V8Function).
+         */
+        private static final List<String> ownMethodNames = new ArrayList<String>();
+
         private final V8JavaCache cache;
         private final V8Object receiver;
         private final V8Function function;
 
+
+        static {
+          for (Method ownMethod : V8FunctionInvocationHandler.class.getDeclaredMethods()) {
+            final String methodName = ownMethod.getName();
+            if (!"invoke".equals(methodName)) ownMethodNames.add(methodName);
+          }
+        }
+
         @Override protected void finalize() {
             try {
                 super.finalize();
-            } catch (Throwable t) { }
+            } catch (Throwable t) {
+                System.err.println("[v8-adapter] Unable to super.finalize(). Thread + " + Thread.currentThread().getName());
+            }
 
-            // TODO: How do we release if this gets executed on a different thread?
+            // TODO: Fix it: GC is executed on a different thread and native j2v8 objects are leaking!
             if (!receiver.isReleased()) {
                 try {
                     receiver.release();
-                } catch (Throwable t) { }
+                } catch (Throwable t) {
+                    System.err.println("[v8-adapter] Unable to receiver.release(). Thread + " + Thread.currentThread().getName());
+                }
             }
 
-            // TODO: How do we release if this gets executed on a different thread?
+          // TODO: Fix it: GC is executed on a different thread and native j2v8 objects are leaking!
             if (!function.isReleased()) {
                 try {
                     function.release();
-                } catch (Throwable t) { }
+                } catch (Throwable t) {
+                    System.err.println("[v8-adapter] Unable to function.release(). Thread + " + Thread.currentThread().getName());
+                }
             }
+        }
+
+        @Override
+        public void release() {
+            receiver.release();
+            function.release();
         }
 
         public V8FunctionInvocationHandler(V8Object receiver, V8Function function, V8JavaCache cache) {
@@ -97,6 +122,11 @@ public final class V8JavaObjectUtils {
         }
 
         @Override public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            if (ownMethodNames.contains(method.getName())) {
+              final Object result = method.invoke(this, args);
+              return result;
+            }
+
             try {
                 final boolean varArgsOnlyMethod = method.isVarArgs() && method.getParameterTypes().length == 1;
                 final Object[] javaArgs;
@@ -108,9 +138,13 @@ public final class V8JavaObjectUtils {
                 }
 
                 V8Array v8Args = translateJavaArgumentsToJavascript(javaArgs, V8JavaObjectUtils.getRuntimeSarcastically(receiver), cache);
-                Object obj = function.call(receiver, v8Args);
-                if (!v8Args.isReleased()) {
+                final Object obj;
+                try {
+                  obj = function.call(receiver, v8Args);
+                } finally {
+                  if (!v8Args.isReleased()) {
                     v8Args.release();
+                  }
                 }
 
                 if (obj instanceof V8Object) {
@@ -131,6 +165,7 @@ public final class V8JavaObjectUtils {
             }
         }
 
+        @Override
         public String toString() {
             return function.toString();
         }
@@ -443,7 +478,7 @@ public final class V8JavaObjectUtils {
                 if (javaArgumentType.isInterface() && javaArgumentType.getDeclaredMethods().length == 1) {
                     //Create a proxy class for the functional interface that wraps this V8Function.
                     V8FunctionInvocationHandler handler = new V8FunctionInvocationHandler(receiver, v8ArgumentFunction, cache);
-                    return Proxy.newProxyInstance(javaArgumentType.getClassLoader(), new Class[] { javaArgumentType }, handler);
+                    return Proxy.newProxyInstance(javaArgumentType.getClassLoader(), new Class[] { javaArgumentType, Releasable.class }, handler);
                 } else if (V8Function.class == javaArgumentType) {
                     return v8ArgumentFunction.twin();
                 } else {

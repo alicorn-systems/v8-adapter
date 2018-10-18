@@ -39,7 +39,27 @@ public class V8JavaAdapterTest {
         public void add(Bar bar) { this.i = bar.doInterface(this.i); }
         public void addBaz(Baz baz) { this.i = baz.doFooInterface(this).getI(); }
         public Object invokeCallBack(CallBack callBack, Object... args) {return callBack.call(args); }
-        public String doString(String s) { return s; }
+        public Object invokeAndReleaseCallBack(CallBack callBack, Object... args) {
+          final Object jsCallResult = invokeAndReleaseInner(callBack, args);
+          return jsCallResult;
+        }
+        public Object reInvokeReleasedCallBack(CallBack callBack, Object... args) throws V8ScriptExecutionException {
+          final Object jsCallResult = invokeAndReleaseInner(callBack, args);
+
+          //should throw here as callback is already released
+          callBack.call(args);
+
+          return jsCallResult;
+        }
+
+        private Object invokeAndReleaseInner(CallBack callBack, Object[] args) {
+          final Object call = callBack.call(args);
+          ((Releasable) callBack).release();
+          return call;
+        }
+
+
+      public String doString(String s) { return s; }
         public int getI() { return i; }
         public Foo copy() { return new Foo(i); }
         public int doArray(int[] a) {
@@ -404,6 +424,30 @@ public class V8JavaAdapterTest {
         final int four = 4;
         Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeCallBack(sumCallBack, " + one + ", " + two + ", " + three + ", " + four + ");"));
     }
+
+    @Test
+    public void functionalArgumentsShouldBeReleasable() {
+      final int one = 1;
+      final int two = 2;
+      final int three = 3;
+      final int sum = one + two + three;
+
+      Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeAndReleaseCallBack(sumCallBack, " + one + ", " + two + ", " + three + ");"));
+    }
+
+    @Test
+    public void shouldThrowIfFunctionalArgumentsIsReleasedAndReInvokedAgain() {
+      final int one = 1;
+      final int two = 2;
+      final int three = 3;
+      final int sum = one + two + three;
+
+      thrown.expect(Exception.class);
+      thrown.expectMessage(StringContains.containsString("Object released"));
+
+      Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.reInvokeReleasedCallBack(sumCallBack, " + one + ", " + two + ", " + three + ");"));
+    }
+
 
     @Test
     public void shouldHandleComplexReturnTypes() {
