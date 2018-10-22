@@ -107,8 +107,11 @@ public final class V8JavaObjectUtils {
           }
         }
 
-        @Override
-        public void release() {
+        @Override public void release() {
+            /*
+             *  Note: check for isReleased() is required:
+             *  otherwise .remove() invokes equals on v8 object, which throws if object is released.
+             */
             if (!receiver.isReleased()) {
               v8Resources.remove(receiver);
 
@@ -403,13 +406,14 @@ public final class V8JavaObjectUtils {
         // Remove resources across runtime.
         for (Iterator<V8Value> iterator = v8Resources.iterator(); iterator.hasNext();) {
             V8Value resource = iterator.next();
+            iterator.remove();
+
             if (resource != null) {
                 if (V8JavaObjectUtils.getRuntimeSarcastically(resource) == v8) {
                     resource.release();
                     released++;
                 }
             }
-            iterator.remove();
         }
 
         // Free any garbage collected classes.
