@@ -397,11 +397,24 @@ public final class V8JavaObjectUtils {
     }
 
     /**
+     * @return whether GC V8 executor is specified and related V8-based JS call-backs could be GCed and released.
+     */
+    private static boolean isGcExecutorSpecified() {
+        return gcExecutor != null;
+    }
+
+    /** package-private api for testing purposes only */
+    static void removeGcExecutor() {
+        gcExecutor = null;
+    }
+
+
+    /**
      * Change V8Resources set to be GC-able by using weak reference based implementation.
      * Should be enabled only when V8 executor is specified.
      */
     private static void makeV8ResourcesGcAble() {
-      if (gcExecutor == null) throw new IllegalStateException("Gc executor must be set");
+      if (!isGcExecutorSpecified()) throw new IllegalStateException("Gc executor must be set");
 
       final Set<V8Value> weakSet = Collections.newSetFromMap(new WeakHashMap<V8Value, Boolean>());
       //because it could be called from non v8 thread
@@ -410,7 +423,7 @@ public final class V8JavaObjectUtils {
       v8Resources.addAll(existingV8Resources);
     }
 
-  /**
+    /**
      * Releases all V8 resources held by this class for a particular runtime.
      *
      * This method should only be called right before a V8 runtime is being
@@ -562,6 +575,9 @@ public final class V8JavaObjectUtils {
                     return Proxy.newProxyInstance(javaArgumentType.getClassLoader(), new Class[] { javaArgumentType, Releasable.class }, handler);
                 } else if (V8Function.class == javaArgumentType) {
                     return v8ArgumentFunction.twin();
+                } else if (Object.class == javaArgumentType && isGcExecutorSpecified()) {
+                    final V8CallBackFunctionInvocationHandler handler = new V8CallBackFunctionInvocationHandler(receiver, v8ArgumentFunction, cache);
+                    return Proxy.newProxyInstance(JsBasedCallBack.class.getClassLoader(), new Class[] { JsBasedCallBack.class, Releasable.class }, handler);
                 } else {
                     throw new IllegalArgumentException(
                             "Method was passed V8Function but does not accept a functional interface: found " + javaArgumentType);
