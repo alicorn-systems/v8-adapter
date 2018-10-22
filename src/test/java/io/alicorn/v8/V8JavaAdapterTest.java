@@ -6,6 +6,7 @@ import io.alicorn.v8.annotations.JSDisableMethodAutodetect;
 import io.alicorn.v8.annotations.JSGetter;
 import io.alicorn.v8.annotations.JSSetter;
 import io.alicorn.v8.annotations.JSStaticFunction;
+import io.alicorn.v8.annotations.callback.JSListener;
 import org.hamcrest.core.IsInstanceOf;
 import org.hamcrest.core.StringContains;
 import org.junit.*;
@@ -29,6 +30,11 @@ public class V8JavaAdapterTest {
         Object call(Object... args);
     }
 
+    @JSListener
+    private interface Listener extends CallBack {
+        @Override Object call(Object... args);
+    }
+
     private static final class Foo {
         public int i;
         public Foo(int i) { this.i = i; }
@@ -39,22 +45,42 @@ public class V8JavaAdapterTest {
         public void add(Bar bar) { this.i = bar.doInterface(this.i); }
         public void addBaz(Baz baz) { this.i = baz.doFooInterface(this).getI(); }
         public Object invokeCallBack(CallBack callBack, Object... args) {return callBack.call(args); }
-        public Object invokeAndReleaseCallBack(CallBack callBack, Object... args) {
-          final Object jsCallResult = invokeAndReleaseInner(callBack, args);
-          return jsCallResult;
-        }
-        public Object reInvokeReleasedCallBack(CallBack callBack, Object... args) throws V8ScriptExecutionException {
-          final Object jsCallResult = invokeAndReleaseInner(callBack, args);
+        public Object invokeCallBackTwice(CallBack callBack, Object... args) {
+            final Object result = callBack.call(args);
 
-          //should throw here as callback is already released
-          callBack.call(args);
+            //should throw here as callback is already released
+            callBack.call(args);
 
-          return jsCallResult;
+            return result;
         }
 
-        private Object invokeAndReleaseInner(CallBack callBack, Object[] args) {
-          final Object call = callBack.call(args);
-          ((Releasable) callBack).release();
+        public Object invokeListenerTwice(Listener listener, Object... args) {
+            final Object result = listener.call(args);
+
+            //should NOT throw here as it's listener, but not call-back
+            listener.call(args);
+
+            return result;
+        }
+
+        public Object invokeAndReleaseListener(Listener listener, Object... args) {
+          final Object jsCallResult = invokeAndManuallyReleaseInner(listener, args);
+          return jsCallResult;
+        }
+
+        public Object reInvokeReleasedListener(Listener listener, Object... args) throws V8ScriptExecutionException {
+          final Object jsCallResult = invokeAndManuallyReleaseInner(listener, args);
+
+          //should throw here as listener is already released manually
+          listener.call(args);
+
+          return jsCallResult;
+        }
+
+        private Object invokeAndManuallyReleaseInner(Listener listener, Object[] args) {
+          final Object call = listener.call(args);
+          //despite Listener does not implement Releasable it's safe to cast as it's implemented by Proxy
+          ((Releasable) listener).release();
           return call;
         }
 
@@ -426,17 +452,42 @@ public class V8JavaAdapterTest {
     }
 
     @Test
-    public void functionalArgumentsShouldBeReleasable() {
+    public void shouldThrowIfFunctionCallBackArgumentsIsCalledTwice() {
+        final int one = 1;
+        final int two = 2;
+        final int three = 3;
+        final int sum = one + two + three;
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectMessage(StringContains.containsString("Object released"));
+
+        //should throw here
+        final Object actualResult = v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeCallBackTwice(sumCallBack, " + one + ", " + two + ", " + three + ");");
+        throw new IllegalStateException("Now Exception is thrown!");
+    }
+
+    @Test
+    public void shouldAllowCallingFunctionListenerArgumentsTwice() {
+        final int one = 1;
+        final int two = 2;
+        final int three = 3;
+        final int sum = one + two + three;
+
+        Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeListenerTwice(sumCallBack, " + one + ", " + two + ", " + three + ");"));
+    }
+
+    @Test
+    public void functionalListenerArgumentsShouldBeReleasable() {
       final int one = 1;
       final int two = 2;
       final int three = 3;
       final int sum = one + two + three;
 
-      Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeAndReleaseCallBack(sumCallBack, " + one + ", " + two + ", " + three + ");"));
+      Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeAndReleaseListener(sumCallBack, " + one + ", " + two + ", " + three + ");"));
     }
 
     @Test
-    public void shouldThrowIfFunctionalArgumentsIsReleasedAndReInvokedAgain() {
+    public void shouldThrowIfFunctionalListenerArgumentsIsReleasedAndReInvokedAgain() {
       final int one = 1;
       final int two = 2;
       final int three = 3;
@@ -445,9 +496,8 @@ public class V8JavaAdapterTest {
       thrown.expect(Exception.class);
       thrown.expectMessage(StringContains.containsString("Object released"));
 
-      Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.reInvokeReleasedCallBack(sumCallBack, " + one + ", " + two + ", " + three + ");"));
+      Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.reInvokeReleasedListener(sumCallBack, " + one + ", " + two + ", " + three + ");"));
     }
-
 
     @Test
     public void shouldHandleComplexReturnTypes() {

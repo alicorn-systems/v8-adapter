@@ -1,6 +1,7 @@
 package io.alicorn.v8;
 
 import com.eclipsesource.v8.*;
+import io.alicorn.v8.annotations.callback.JSListener;
 
 import java.lang.reflect.*;
 import java.util.*;
@@ -97,8 +98,7 @@ public final class V8JavaObjectUtils {
         @Override protected void finalize() throws Throwable {
           try {
             gcExecutor.execute(new Runnable() {
-              @Override
-              public void run() {
+              @Override public void run() {
                 release();
               }
             });
@@ -150,12 +150,20 @@ public final class V8JavaObjectUtils {
 
           final Object jsFunctionResult = invokeJsFunction(method, args);
 
-          release();
+            onJsInvoked();
 
-          return jsFunctionResult;
+            return jsFunctionResult;
         }
 
-      private Object invokeJsFunction(Method method, Object[] args) throws Throwable {
+        /**
+         * By default V8 CallBack releases V8 resources when v8 function is invoked.
+         *  Child classes can change this behaviour.
+         */
+        protected void onJsInvoked() {
+            release();
+        }
+
+        private Object invokeJsFunction(Method method, Object[] args) throws Throwable {
         try {
             final boolean varArgsOnlyMethod = method.isVarArgs() && method.getParameterTypes().length == 1;
             final Object[] javaArgs;
@@ -197,6 +205,19 @@ public final class V8JavaObjectUtils {
       @Override
         public String toString() {
             return function.toString();
+        }
+    }
+
+  /**
+   * @see JSListener
+   */
+    private static class V8ListenerFunctionInvocationHandler extends V8CallBackFunctionInvocationHandler {
+        public V8ListenerFunctionInvocationHandler(V8Object receiver, V8Function function, V8JavaCache cache) {
+            super(receiver, function, cache);
+        }
+
+        @Override protected void onJsInvoked() {
+            //do not release v8 function: unlike base call-back class listener could be called multiple times.
         }
     }
 
@@ -532,7 +553,12 @@ public final class V8JavaObjectUtils {
                 //TODO: update check in case of java 8 upgrade:
                 if (javaArgumentType.isInterface() && javaArgumentType.getDeclaredMethods().length == 1) {
                     //Create a proxy class for the functional interface that wraps this V8Function.
-                    V8CallBackFunctionInvocationHandler handler = new V8CallBackFunctionInvocationHandler(receiver, v8ArgumentFunction, cache);
+                    final V8CallBackFunctionInvocationHandler handler;
+                    if (!javaArgumentType.isAnnotationPresent(JSListener.class)) {
+                        handler = new V8CallBackFunctionInvocationHandler(receiver, v8ArgumentFunction, cache);
+                    } else {
+                        handler = new V8ListenerFunctionInvocationHandler(receiver, v8ArgumentFunction, cache);
+                    }
                     return Proxy.newProxyInstance(javaArgumentType.getClassLoader(), new Class[] { javaArgumentType, Releasable.class }, handler);
                 } else if (V8Function.class == javaArgumentType) {
                     return v8ArgumentFunction.twin();
