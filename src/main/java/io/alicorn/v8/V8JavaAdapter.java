@@ -83,6 +83,7 @@ public final class V8JavaAdapter {
         if (name == null) {
             name = "TEMP" + UUID.randomUUID().toString().replaceAll("-", "");
         }
+        final V8 v8 = V8JavaObjectUtils.getRuntimeSarcastically(rootObject);
 
         //Build an empty object instance.
         V8JavaClassProxy proxy = cache.cachedV8JavaClasses.get(object.getClass());
@@ -91,12 +92,31 @@ public final class V8JavaAdapter {
 
         // Attach interceptor.
         if (proxy.getInterceptor() != null) {
-            script.append(proxy.getInterceptor().getConstructorScriptBody());
+            //override injection if any
+            final Object injectionOverride = proxy.getInterceptor().objectInjectorOverride(object);
+            if (injectionOverride == null) {
+                script.append(proxy.getInterceptor().getConstructorScriptBody());
+            } else {
+                final V8Value convertedToV8JavaObject;
+                if (injectionOverride instanceof V8Object) {
+                    convertedToV8JavaObject = (V8Value) injectionOverride;
+                } else {
+                    convertedToV8JavaObject = (V8Value) V8JavaObjectUtils.translateJavaArgumentToJavascript(injectionOverride, v8, cache);
+                }
+
+                String javaObjectName = name + "java";
+                v8.add(javaObjectName, convertedToV8JavaObject);
+                convertedToV8JavaObject.release();
+
+                //return injected javaObject and clear reference to this variable
+                script.append("try { return ").append(javaObjectName).append("; } finally { " + javaObjectName + " = undefined; }");
+            }
+
         }
 
         script.append("\n}; ").append(name).append(";");
 
-        V8Object other = V8JavaObjectUtils.getRuntimeSarcastically(rootObject).executeObjectScript(script.toString());
+        V8Object other = v8.executeObjectScript(script.toString());
         String id = proxy.attachJavaObjectToJsObject(object, other);
         other.release();
         return id;
