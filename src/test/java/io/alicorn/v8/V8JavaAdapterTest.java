@@ -827,9 +827,9 @@ public class V8JavaAdapterTest {
             }
         };
 
-        V8JavaObjectUtils.setGcExecutor(executorStub);
+        V8JavaObjectUtils.setGcExecutor(v8, executorStub);
         v8.executeScript("var x = new NativeJsFunctionReader(); var y = x.sumAndAndTryToNotify(" + one + ", " + two + ", function(sum) { sumContainer.set(sum); } ); y;");
-        V8JavaObjectUtils.removeGcExecutor();
+        V8JavaObjectUtils.removeGcExecutor(v8);
 
         Assert.assertEquals(sum, sumContainer.get());
     }
