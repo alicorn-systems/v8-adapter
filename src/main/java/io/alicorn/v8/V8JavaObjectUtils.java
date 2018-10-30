@@ -124,12 +124,17 @@ public final class V8JavaObjectUtils {
 
         @Override protected void finalize() throws Throwable {
             try {
-                gcExecutor.execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        release();
-                    }
-                });
+                if (gcExecutor != null) {
+                    gcExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            release();
+                        }
+                    });
+                } else {
+                    //Normally does nothing. But logs errors if .release() was nor called manually before.
+                    release();
+                }
             } finally {
                 super.finalize();
             }
