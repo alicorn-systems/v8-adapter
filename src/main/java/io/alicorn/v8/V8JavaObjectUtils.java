@@ -61,22 +61,35 @@ public final class V8JavaObjectUtils {
      *  If {@link #perV8GcExecutor} is set - the implementation is weak reference based and underlying
      *  V8 resources could be released.
      *  Otherwise resources are retained until {@link #releaseV8Resources(V8)} is called.
+     *
+     *  NOTE: V8Locker is used instead of V8 because .equals() and .hashCode() throws if v8 accessed from non-v8 thread (for unknown reason)
      */
-    private static Map<V8, Set<V8Value>> perV8Resources = new HashMap<V8, Set<V8Value>>();
+    private static Map<Integer, Set<V8Value>> perV8Resources = new HashMap<Integer, Set<V8Value>>();
 
     /**
      *  If set for given V8 - {@link V8CallBackFunctionInvocationHandler} could be GCed when Proxy is not referenced
      *   in the client code and underlying V8Function could be released and memory could be freed.
-     * @param v8
+     *
+     *  NOTE: V8Locker is used instead of V8 because .equals() and .hashCode() throws if v8 accessed from non-v8 thread (for unknown reason)
      */
-    private static Map <V8, Executor> perV8GcExecutor = new HashMap<V8, Executor>();
+    private static Map <Integer, Executor> perV8GcExecutor = new HashMap<Integer, Executor>();
+
+    /**
+     * ID of V8, which can be obtained from any thread.
+     * Extra "V8 id" is used instead of V8 directly because .equals() and .hashCode() throws if v8 accessed from non-v8 thread (for unknown reason).
+     */
+    public static int getV8Id(V8 v8) {
+        return v8.getLocker().hashCode();
+    }
 
     private static Set<V8Value> getV8Resources(V8 v8) {
-        if (!perV8Resources.containsKey(v8)) {
+        final int v8Id = getV8Id(v8);
+
+        if (!perV8Resources.containsKey(v8Id)) {
             initNewV8Resources(v8);
         }
 
-        return perV8Resources.get(v8);
+        return perV8Resources.get(v8Id);
     }
 
     /**
@@ -84,16 +97,20 @@ public final class V8JavaObjectUtils {
      *  If GC executor for current v8 is provided - the set is weak reference based.
      */
     private static void initNewV8Resources(V8 v8) {
-        final Set<V8Value> v8Resources = newV8Resources();
-        perV8Resources.put(v8, v8Resources);
+        final Set<V8Value> v8Resources = newV8Resources(v8);
+        perV8Resources.put(getV8Id(v8), v8Resources);
     }
 
-    private static Set<V8Value> newV8Resources() {
-        if (perV8GcExecutor == null) {
+    private static Set<V8Value> newV8Resources(V8 v8) {
+        if (getGcExecutor(v8) == null) {
             return new HashSet<V8Value>();
         } else {
             return Collections.newSetFromMap(new WeakHashMap<V8Value, Boolean>());
         }
+    }
+
+    private static void removeV8Resources(V8 v8) {
+        perV8Resources.remove(getV8Id(v8));
     }
 
     /**
@@ -102,7 +119,16 @@ public final class V8JavaObjectUtils {
      * @param v8
      */
     private static Executor getGcExecutor(V8 v8) {
-        return perV8GcExecutor.get(v8);
+        return perV8GcExecutor.get(getV8Id(v8));
+    }
+
+    /** package-private access for testing purposes only */
+    static void removeGcExecutor(V8 v8) {
+        perV8GcExecutor.remove(getV8Id(v8));
+    }
+
+    private static void setGcExecutorInner(V8 v8, Executor newGcExecutor) {
+        perV8GcExecutor.put(getV8Id(v8), newGcExecutor);
     }
 
     /**
@@ -483,7 +509,7 @@ public final class V8JavaObjectUtils {
     public static void setGcExecutor(V8 v8, Executor newGcExecutor) {
       if (newGcExecutor == null) throw new IllegalArgumentException("Not null executor required");
 
-      perV8GcExecutor.put(v8, newGcExecutor);
+      setGcExecutorInner(v8, newGcExecutor);
 
       makeV8ResourcesGcAble(v8);
     }
@@ -494,12 +520,6 @@ public final class V8JavaObjectUtils {
     private static boolean isGcExecutorSpecified(V8 v8) {
         return getGcExecutor(v8) != null;
     }
-
-    /** package-private api for testing purposes only */
-    static void removeGcExecutor(V8 v8) {
-        perV8GcExecutor.remove(v8);
-    }
-
 
     /**
      * Change V8Resources set to be GC-able by using weak reference based implementation.
@@ -546,8 +566,8 @@ public final class V8JavaObjectUtils {
             V8JavaAdapter.getCacheForRuntime(v8).removeGarbageCollectedJavaObjects();
         }
 
-        perV8Resources.remove(v8);
-        perV8GcExecutor.remove(v8);
+        removeV8Resources(v8);
+        removeGcExecutor(v8);
 
         return released;
     }
