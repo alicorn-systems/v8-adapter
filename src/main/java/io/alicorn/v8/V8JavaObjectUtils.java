@@ -33,12 +33,6 @@ public final class V8JavaObjectUtils {
         }
     };
 
-    /**
-     *  If set - {@link V8CallBackFunctionInvocationHandler} could be GCed when Proxy is not referenced
-     *   in the client code and underlying V8Function could be released and memory could be freed.
-     */
-    private static Executor gcExecutor;
-
     static {
         BOXED_PRIMITIVE_MAP.put(boolean.class, Boolean.class);
         BOXED_PRIMITIVE_MAP.put(short.class, Short.class);
@@ -64,11 +58,52 @@ public final class V8JavaObjectUtils {
 
     /**
      * Set of {@link V8Value}s held by this class or one of its delegates.
-     *  If {@link #gcExecutor} is set - the implementation is weak reference based and underlying
+     *  If {@link #perV8GcExecutor} is set - the implementation is weak reference based and underlying
      *  V8 resources could be released.
      *  Otherwise resources are retained until {@link #releaseV8Resources(V8)} is called.
      */
-    private static Set<V8Value> v8Resources = new HashSet<V8Value>();
+    private static Map<V8, Set<V8Value>> perV8Resources = new HashMap<V8, Set<V8Value>>();
+
+    /**
+     *  If set for given V8 - {@link V8CallBackFunctionInvocationHandler} could be GCed when Proxy is not referenced
+     *   in the client code and underlying V8Function could be released and memory could be freed.
+     * @param v8
+     */
+    private static Map <V8, Executor> perV8GcExecutor = new HashMap<V8, Executor>();
+
+    private static Set<V8Value> getV8Resources(V8 v8) {
+        if (!perV8Resources.containsKey(v8)) {
+            initNewV8Resources(v8);
+        }
+
+        return perV8Resources.get(v8);
+    }
+
+    /**
+     * Initializes v8 resources for track with empty set.
+     *  If GC executor for current v8 is provided - the set is weak reference based.
+     */
+    private static void initNewV8Resources(V8 v8) {
+        final Set<V8Value> v8Resources = newV8Resources();
+        perV8Resources.put(v8, v8Resources);
+    }
+
+    private static Set<V8Value> newV8Resources() {
+        if (perV8GcExecutor == null) {
+            return new HashSet<V8Value>();
+        } else {
+            return Collections.newSetFromMap(new WeakHashMap<V8Value, Boolean>());
+        }
+    }
+
+    /**
+     *  If set - {@link V8CallBackFunctionInvocationHandler} could be GCed when Proxy is not referenced
+     *   in the client code and underlying V8Function could be released and memory could be freed.
+     * @param v8
+     */
+    private static Executor getGcExecutor(V8 v8) {
+        return perV8GcExecutor.get(v8);
+    }
 
     /**
      * Lightweight invocation handler for translating certain V8 functions to
@@ -97,6 +132,7 @@ public final class V8JavaObjectUtils {
 
         @Override protected void finalize() throws Throwable {
           try {
+              final Executor gcExecutor = getGcExecutor();
               if (gcExecutor != null) {
                   gcExecutor.execute(new Runnable() {
                       @Override
@@ -114,6 +150,8 @@ public final class V8JavaObjectUtils {
         }
 
         @Override public void release() {
+            final Set<V8Value> v8Resources = getV8Resources();
+
             /*
              *  Note: check for isReleased() is required:
              *  otherwise .remove() invokes equals on v8 object, which throws if object is released.
@@ -143,9 +181,18 @@ public final class V8JavaObjectUtils {
             this.receiver = receiver.twin();
             this.function = function.twin();
             this.cache = cache;
+            final Set<V8Value> v8Resources = getV8Resources();
             v8Resources.add(this.receiver);
             v8Resources.add(this.function);
             //optionally pass GC-Executor as argument (if accessing it as static field causes issues)
+        }
+
+        private Set<V8Value> getV8Resources() {
+            return V8JavaObjectUtils.getV8Resources(receiver.getRuntime());
+        }
+
+        private Executor getGcExecutor() {
+            return V8JavaObjectUtils.getGcExecutor(receiver.getRuntime());
         }
 
         @Override public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
@@ -394,26 +441,27 @@ public final class V8JavaObjectUtils {
      *   After this "Js function to Java Callback" can be GCed when there is no reference in the client code.
      *   Otherwise underlying V8Function retains native memory until {@link #releaseV8Resources(V8)} is called.
      */
-    public static void setGcExecutor(Executor newGcExecutor) {
+    public static void setGcExecutor(V8 v8, Executor newGcExecutor) {
       if (newGcExecutor == null) throw new IllegalArgumentException("Not null executor required");
 
-      gcExecutor = newGcExecutor;
+      perV8GcExecutor.put(v8, newGcExecutor);
 
-      makeV8ResourcesGcAble();
+      makeV8ResourcesGcAble(v8);
     }
 
     /**
      * Change V8Resources set to be GC-able by using weak reference based implementation.
      * Should be enabled only when V8 executor is specified.
      */
-    private static void makeV8ResourcesGcAble() {
-      if (gcExecutor == null) throw new IllegalStateException("Gc executor must be set");
+    private static void makeV8ResourcesGcAble(V8 v8) {
+      if (getGcExecutor(v8) == null) throw new IllegalStateException("Gc executor must be set");
 
-      final Set<V8Value> weakSet = Collections.newSetFromMap(new WeakHashMap<V8Value, Boolean>());
       //because it could be called from non v8 thread
-      final Set<V8Value> existingV8Resources = v8Resources;
-      v8Resources = weakSet;
-      v8Resources.addAll(existingV8Resources);
+      final Set<V8Value> existingV8Resources = getV8Resources(v8);
+
+      //initialize with new weak Set
+      initNewV8Resources(v8);
+      getV8Resources(v8).addAll(existingV8Resources);
     }
 
   /**
@@ -431,15 +479,13 @@ public final class V8JavaObjectUtils {
         int released = 0;
 
         // Remove resources across runtime.
-        for (Iterator<V8Value> iterator = v8Resources.iterator(); iterator.hasNext();) {
+        for (Iterator<V8Value> iterator = getV8Resources(v8).iterator(); iterator.hasNext();) {
             V8Value resource = iterator.next();
             iterator.remove();
 
             if (resource != null) {
-                if (V8JavaObjectUtils.getRuntimeSarcastically(resource) == v8) {
-                    resource.release();
-                    released++;
-                }
+                resource.release();
+                released++;
             }
         }
 
@@ -447,6 +493,9 @@ public final class V8JavaObjectUtils {
         if (released > 0) {
             V8JavaAdapter.getCacheForRuntime(v8).removeGarbageCollectedJavaObjects();
         }
+
+        perV8Resources.remove(v8);
+        perV8GcExecutor.remove(v8);
 
         return released;
     }
