@@ -76,7 +76,15 @@ public final class V8JavaObjectUtils {
 
     /**
      * ID of V8, which can be obtained from any thread.
+     *
      * Extra "V8 id" is used instead of V8 directly because .equals() and .hashCode() throws if v8 accessed from non-v8 thread (for unknown reason).
+     *
+     * TODO: Why?
+     *
+     * @param v8 V8 instance to get the unique V8 ID of.
+     *
+     * @return The ID of the given V8 instance.
+     *
      */
     public static int getV8Id(V8 v8) {
         return v8.getLocker().hashCode();
@@ -503,8 +511,14 @@ public final class V8JavaObjectUtils {
 
     /**
      *  Sets V8 thread executor for GC purposes.
-     *   After this "Js function to Java Callback" can be GCed when there is no reference in the client code.
+     *
+     *  After this "Js function to Java Callback" can be GCed when there is no reference in the client code.
+     *
      *   Otherwise underlying V8Function retains native memory until {@link #releaseV8Resources(V8)} is called.
+     *
+     * @param v8 V8 instance to set the GC executor for.
+     * @param newGcExecutor New GC executor to use.
+     *
      */
     public static void setGcExecutor(V8 v8, Executor newGcExecutor) {
       if (newGcExecutor == null) throw new IllegalArgumentException("Not null executor required");
@@ -880,7 +894,7 @@ public final class V8JavaObjectUtils {
      *
      * @param isVarArgs Whether or not the Java parameters list ends in a varargs array.
      * @param javaArgumentTypes Java types that the arguments must match.
-     * @param argsGenericType
+     * @param argsGenericType Generic types.
      * @param javascriptArguments Arguments to translate to Java.
      * @param receiver V8Object receiver that any functional arguments should be tied to.
      * @param cache V8JavaCache associated with the given V8 runtime.

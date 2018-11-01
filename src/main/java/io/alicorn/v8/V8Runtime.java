@@ -29,6 +29,12 @@ public class V8Runtime {
     }
 
     /**
+     * @param name Name of the injected object in the V8 context.
+     * @param object Object to inject.
+     * @param rootObject Object to inject the object into.
+     *
+     * @return The unique ID of the injected object in the V8 context.
+     *
      * @see #injectObject(String, Object)
      */
     protected String injectObject(String name, Object object, V8Object rootObject) {
@@ -94,6 +100,11 @@ public class V8Runtime {
     }
 
     /**
+     * @param name Name of the injected class in the V8 context.
+     * @param classy Class to inject.
+     * @param interceptor Class intercetor to tie to the class.
+     * @param rootObject Object to inject the class in.
+     *
      * @see #injectClass(Class)
      */
     protected void injectClass(String name, Class<?> classy, V8JavaClassInterceptor interceptor, V8Object rootObject) {

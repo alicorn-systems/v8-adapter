@@ -10,7 +10,11 @@ package io.alicorn.v8;
 public interface V8JavaClassInterceptor<T> {
 
     /**
+     *
+     * @param object Object to inject.
+     *
      * @return if not null - result of this method will be return as result of object injection in JS.
+     *
      * Actual java object will be passed for ability to handle the incoming data.
      *
      * It does not change behaviour of newly created object in JS on purpose (using new ClassName())
