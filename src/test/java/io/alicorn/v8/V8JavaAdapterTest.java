@@ -14,6 +14,7 @@ import org.junit.rules.ExpectedException;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class V8JavaAdapterTest {
@@ -300,6 +301,18 @@ public class V8JavaAdapterTest {
             v8Args.release();
             callBack.release();
         }
+
+        public void sumAndAndTryToNotify(int left, int right, Object possibleCallBack) {
+            final int sum = left + right;
+            final List<Integer> callBackArg = Collections.singletonList(sum);
+
+            if (!(possibleCallBack instanceof JsBasedCallBack)) {
+              throw new IllegalArgumentException("Can't call object, which is not JsBasedCallBack, but " + possibleCallBack);
+            }
+
+            final JsBasedCallBack callBack = (JsBasedCallBack) possibleCallBack;
+            callBack.call(sum);
+        }
     }
 
     private static final class NativeJsArrayReader {
@@ -463,7 +476,6 @@ public class V8JavaAdapterTest {
 
         //should throw here
         final Object actualResult = v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeCallBackTwice(sumCallBack, " + one + ", " + two + ", " + three + ");");
-        throw new IllegalStateException("Now Exception is thrown!");
     }
 
     @Test
@@ -794,6 +806,50 @@ public class V8JavaAdapterTest {
         final int sum = one + two;
 
         v8.executeScript("var x = new NativeJsFunctionReader(); var y = x.sumAndNotify(" + one + ", " + two + ", function(sum) { sumContainer.set(sum); } ); y;");
+
+        Assert.assertEquals(sum, sumContainer.get());
+    }
+
+    @Test
+    public void shouldReadFunctionAsJavaObject() {
+        V8JavaAdapter.injectClass(NativeJsFunctionReader.class, v8);
+
+        final AtomicInteger sumContainer = new AtomicInteger();
+        V8JavaAdapter.injectObject("sumContainer", sumContainer, v8);
+
+        final int one = 1;
+        final int two = 2;
+        final int sum = one + two;
+
+        final Executor executorStub = new Executor() {
+            @Override public void execute(Runnable command) {
+                //stub, which does nothing
+            }
+        };
+
+        V8JavaObjectUtils.setGcExecutor(v8, executorStub);
+        v8.executeScript("var x = new NativeJsFunctionReader(); var y = x.sumAndAndTryToNotify(" + one + ", " + two + ", function(sum) { sumContainer.set(sum); } ); y;");
+        V8JavaObjectUtils.removeGcExecutor(v8);
+
+        Assert.assertEquals(sum, sumContainer.get());
+    }
+
+
+    @Test
+    public void shouldNotReadFunctionAsJavaObjectWithoutGcExecutor() {
+        V8JavaAdapter.injectClass(NativeJsFunctionReader.class, v8);
+
+        final AtomicInteger sumContainer = new AtomicInteger();
+        V8JavaAdapter.injectObject("sumContainer", sumContainer, v8);
+
+        final int one = 1;
+        final int two = 2;
+        final int sum = one + two;
+
+        thrown.expect(V8ScriptExecutionException.class);
+        thrown.expectMessage(StringContains.containsString("No signature exists for sumAndAndTryToNotify"));
+
+        v8.executeScript("var x = new NativeJsFunctionReader(); var y = x.sumAndAndTryToNotify(" + one + ", " + two + ", function(sum) { sumContainer.set(sum); } ); y;");
 
         Assert.assertEquals(sum, sumContainer.get());
     }

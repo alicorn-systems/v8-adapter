@@ -131,83 +131,24 @@ public final class V8JavaObjectUtils {
         perV8GcExecutor.put(getV8Id(v8), newGcExecutor);
     }
 
-
     /**
-     * Lightweight invocation handler for translating certain V8 functions to
-     * Java functional interfaces.
+     * Lightweight adapter of JS Function.
+     * Handles invocation of JS Function by handling translation of Java arguments to JS and return result back to Java.
+     * It adapts certain V8 functions as Java functional class (abstract).
      *
      * Act as call-back, which could be invoked once, but not like listener.
+     * If listener behaviour is desired -  {@link #onJsInvoked()} should be overwritten.
      */
-    private static class V8CallBackFunctionInvocationHandler implements InvocationHandler, Releasable {
-        /**
-         *  Methods like .toString() or .release() should be invoked from the current class
-         *  (instead of sending to V8Function).
-         */
-        private static final List<String> ownMethodNames = new ArrayList<String>();
-
+    public abstract static class JsCallBackAdapter implements Releasable {
         private final V8JavaCache cache;
         private final V8Object receiver;
         private final V8Function function;
 
-
-        static {
-          for (Method ownMethod : V8CallBackFunctionInvocationHandler.class.getDeclaredMethods()) {
-            final String methodName = ownMethod.getName();
-            if (!"invoke".equals(methodName)) ownMethodNames.add(methodName);
-          }
-        }
-
-        @Override protected void finalize() throws Throwable {
-          try {
-              final Executor gcExecutor = getGcExecutor();
-              if (gcExecutor != null) {
-                  gcExecutor.execute(new Runnable() {
-                      @Override
-                      public void run() {
-                          release();
-                      }
-                  });
-              } else {
-                  //Normally does nothing. But logs errors if .release() was nor called manually before.
-                  release();
-              }
-          } finally {
-            super.finalize();
-          }
-        }
-
-        @Override public void release() {
-            final Set<V8Value> v8Resources = getV8Resources();
-
-            /*
-             *  Note: check for isReleased() is required:
-             *  otherwise .remove() invokes equals on v8 object, which throws if object is released.
-             */
-            if (!receiver.isReleased()) {
-              v8Resources.remove(receiver);
-
-              try {
-                receiver.release();
-              } catch (Throwable t) {
-                System.err.println("[v8-adapter] Unable to receiver.release(). Thread + " + Thread.currentThread().getName());
-              }
-            }
-
-            if (!function.isReleased()) {
-              v8Resources.remove(function);
-
-              try {
-                function.release();
-              } catch (Throwable t) {
-                System.err.println("[v8-adapter] Unable to function.release(). Thread + " + Thread.currentThread().getName());
-              }
-            }
-        }
-
-        public V8CallBackFunctionInvocationHandler(V8Object receiver, V8Function function, V8JavaCache cache) {
+        public JsCallBackAdapter(V8Object receiver, V8Function function, V8JavaCache cache) {
             this.receiver = receiver.twin();
             this.function = function.twin();
             this.cache = cache;
+
             final Set<V8Value> v8Resources = getV8Resources();
             v8Resources.add(this.receiver);
             v8Resources.add(this.function);
@@ -222,46 +163,79 @@ public final class V8JavaObjectUtils {
             return V8JavaObjectUtils.getGcExecutor(receiver.getRuntime());
         }
 
-        @Override public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-          if (ownMethodNames.contains(method.getName())) {
-            final Object result = method.invoke(this, args);
-            return result;
-          }
+        /**
+         * Releases underlying V8 resources. Must be called on V8 thread.
+         */
+        @Override public void release() {
+            final Set<V8Value> v8Resources = getV8Resources();
 
-          final Object jsFunctionResult = invokeJsFunction(method, args);
+            /*
+             *  Note: check for isReleased() is required:
+             *  otherwise .remove() invokes equals on v8 object, which throws if object is released.
+             */
+            if (!receiver.isReleased()) {
+                v8Resources.remove(receiver);
 
-            onJsInvoked();
+                try {
+                    receiver.release();
+                } catch (Throwable t) {
+                    logError("Unable to receiver.release()", t);
+                }
+            }
 
-            return jsFunctionResult;
+            if (!function.isReleased()) {
+                v8Resources.remove(function);
+
+                try {
+                    function.release();
+                } catch (Throwable t) {
+                    logError("Unable to function.release()", t);
+                }
+            }
+        }
+
+        @Override protected void finalize() throws Throwable {
+            try {
+                final Executor gcExecutor = getGcExecutor();
+                if (gcExecutor != null) {
+                    gcExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            release();
+                        }
+                    });
+                } else {
+                    //Normally does nothing. But logs errors if .release() was nor called manually before.
+                    release();
+                }
+            } finally {
+                super.finalize();
+            }
         }
 
         /**
          * By default V8 CallBack releases V8 resources when v8 function is invoked.
-         *  Child classes can change this behaviour.
+         * Child classes can change this behaviour.
          */
         protected void onJsInvoked() {
             release();
         }
 
-        private Object invokeJsFunction(Method method, Object[] args) throws Throwable {
-        try {
-            final boolean varArgsOnlyMethod = method.isVarArgs() && method.getParameterTypes().length == 1;
-            final Object[] javaArgs;
-            if (!varArgsOnlyMethod) {
-                javaArgs = args;
-            } else {
-                //TODO: also consider "spreading" of var-args if there are another arguments before as for JS->Java case
-                javaArgs = (Object[]) args[0];
-            }
-
-            V8Array v8Args = translateJavaArgumentsToJavascript(javaArgs, V8JavaObjectUtils.getRuntimeSarcastically(receiver), cache);
+        protected Object invokeJsFunction(Object[] javaArgs) {
+            V8Array v8Args = translateJavaArgumentsToJavascript(javaArgs, getRuntimeSarcastically(receiver), cache);
             final Object obj;
             try {
-              obj = function.call(receiver, v8Args);
+                obj = function.call(receiver, v8Args);
             } finally {
-              if (!v8Args.isReleased()) {
-                v8Args.release();
-              }
+                if (!v8Args.isReleased()) {
+                    v8Args.release();
+                }
+            }
+
+            try {
+                onJsInvoked();
+            } catch (Throwable t) {
+                logError("Unable to perform onJsInvoked()", t);
             }
 
             if (obj instanceof V8Object) {
@@ -277,20 +251,73 @@ public final class V8JavaObjectUtils {
             } else {
                 return obj;
             }
-        } catch (Throwable t) {
-            throw t;
         }
-      }
 
-      @Override
-        public String toString() {
+        @Override public String toString() {
             return function.toString();
+        }
+
+        protected void logError(String logMessage, Throwable t) {
+            System.err.println("[v8-adapter] " + logMessage + ": " + t + " .Thread + " + Thread.currentThread().getName());
         }
     }
 
-  /**
-   * @see JSListener
-   */
+    /**
+     * Lightweight invocation handler for translating certain V8 functions to
+     * Java functional interfaces.
+     *
+     * Act as call-back, which could be invoked once, but not like listener.
+     */
+    private static class V8CallBackFunctionInvocationHandler extends JsCallBackAdapter implements InvocationHandler {
+        /**
+         * Methods like .toString() or .release() should be invoked from the current class
+         * (instead of sending to V8Function).
+         */
+        private static final List<String> ownMethodNames = new ArrayList<String>();
+
+        static {
+            for (Method ownMethod : JsCallBackAdapter.class.getDeclaredMethods()) {
+                final String methodName = ownMethod.getName();
+                if (!"invoke".equals(methodName)) ownMethodNames.add(methodName);
+            }
+        }
+
+        public V8CallBackFunctionInvocationHandler(V8Object receiver, V8Function function, V8JavaCache cache) {
+            super(receiver, function, cache);
+        }
+
+        @Override public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            if (ownMethodNames.contains(method.getName())) {
+                final Object result = method.invoke(this, args);
+                return result;
+            }
+
+            final Object jsFunctionResult = invokeJsFunctionUsingMethodArgs(method, args);
+
+            return jsFunctionResult;
+        }
+
+        protected Object invokeJsFunctionUsingMethodArgs(Method method, Object[] args) throws Throwable {
+            try {
+                final boolean varArgsOnlyMethod = method.isVarArgs() && method.getParameterTypes().length == 1;
+                final Object[] javaArgs;
+                if (!varArgsOnlyMethod) {
+                    javaArgs = args;
+                } else {
+                    //TODO: also consider "spreading" of var-args if there are another arguments before as for JS->Java case
+                    javaArgs = (Object[]) args[0];
+                }
+
+                return invokeJsFunction(javaArgs);
+            } catch (Throwable t) {
+                throw t;
+            }
+        }
+    }
+
+    /**
+     * @see JSListener
+     */
     private static class V8ListenerFunctionInvocationHandler extends V8CallBackFunctionInvocationHandler {
         public V8ListenerFunctionInvocationHandler(V8Object receiver, V8Function function, V8JavaCache cache) {
             super(receiver, function, cache);
@@ -298,6 +325,17 @@ public final class V8JavaObjectUtils {
 
         @Override protected void onJsInvoked() {
             //do not release v8 function: unlike base call-back class listener could be called multiple times.
+        }
+    }
+
+    private static class DefaultJsBasedCallBack extends JsCallBackAdapter implements JsBasedCallBack {
+        public DefaultJsBasedCallBack(V8Object receiver, V8Function function, V8JavaCache cache) {
+            super(receiver, function, cache);
+        }
+
+        @Override
+        public Object call(Object... args) {
+            return invokeJsFunction(args);
         }
     }
 
@@ -477,11 +515,18 @@ public final class V8JavaObjectUtils {
     }
 
     /**
+     * @return whether GC V8 executor is specified and related V8-based JS call-backs could be GCed and released.
+     */
+    private static boolean isGcExecutorSpecified(V8 v8) {
+        return getGcExecutor(v8) != null;
+    }
+
+    /**
      * Change V8Resources set to be GC-able by using weak reference based implementation.
      * Should be enabled only when V8 executor is specified.
      */
     private static void makeV8ResourcesGcAble(V8 v8) {
-      if (getGcExecutor(v8) == null) throw new IllegalStateException("Gc executor must be set");
+      if (!isGcExecutorSpecified(v8)) throw new IllegalStateException("Gc executor must be set");
 
       //because it could be called from non v8 thread
       final Set<V8Value> existingV8Resources = getV8Resources(v8);
@@ -491,7 +536,7 @@ public final class V8JavaObjectUtils {
       getV8Resources(v8).addAll(existingV8Resources);
     }
 
-  /**
+    /**
      * Releases all V8 resources held by this class for a particular runtime.
      *
      * This method should only be called right before a V8 runtime is being
@@ -644,6 +689,8 @@ public final class V8JavaObjectUtils {
                     return Proxy.newProxyInstance(javaArgumentType.getClassLoader(), new Class[] { javaArgumentType, Releasable.class }, handler);
                 } else if (V8Function.class == javaArgumentType) {
                     return v8ArgumentFunction.twin();
+                } else if (Object.class == javaArgumentType && isGcExecutorSpecified(receiver.getRuntime())) {
+                    return new DefaultJsBasedCallBack(receiver, v8ArgumentFunction, cache);
                 } else {
                     throw new IllegalArgumentException(
                             "Method was passed V8Function but does not accept a functional interface: found " + javaArgumentType);
