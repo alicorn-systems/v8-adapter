@@ -16,6 +16,7 @@ import java.io.File;
 import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class V8JavaAdapterTest {
 //Setup classes////////////////////////////////////////////////////////////////
@@ -212,6 +213,8 @@ public class V8JavaAdapterTest {
 
     private static final class FooInterceptor implements V8JavaClassInterceptor<InterceptableFoo> {
 
+        @Override public Object objectInjectorOverride(InterceptableFoo object) { return null; }
+
         @Override public String getConstructorScriptBody() {
             return "var i = 0;\n" +
                     "this.getI = function() { return i; };\n" +
@@ -272,6 +275,18 @@ public class V8JavaAdapterTest {
 
         public void setMap(Map<String, ?> map) {
             this.map = map;
+        }
+    }
+
+    private static final class RawListHolder {
+        List<?> list;
+
+        public List<?> getMap() {
+            return list;
+        }
+
+        public void setList(List<?> list) {
+            this.list = list;
         }
     }
 
@@ -903,5 +918,74 @@ public class V8JavaAdapterTest {
     public void shouldChooseCorrectConstructorAndNotPassNulls() {
         V8JavaAdapter.injectClass(File.class, v8);
         v8.executeVoidScript("var f = new File(\"test.txt\");");
+    }
+
+    @Test
+    public void shouldCustomizeJavaToJSTransformation() {
+        final V8JavaClassInterceptor interceptor = new V8JavaClassInterceptor<Map>() {
+            @Override
+            public Object objectInjectorOverride(Map object) {
+                return V8ObjectUtils.toV8Object(v8, object);
+            }
+
+            @Override public String getConstructorScriptBody() { return null; }
+            @Override public void onInject(V8JavaClassInterceptorContext context, Map object) { }
+            @Override public void onExtract(V8JavaClassInterceptorContext context, Map object) { }
+        };
+
+        final V8JavaClassInterceptor listInterceptor = new V8JavaClassInterceptor<List>() {
+            @Override
+            public Object objectInjectorOverride(List object) {
+                return V8ObjectUtils.toV8Array(v8, object);
+            }
+
+            @Override public String getConstructorScriptBody() { return null; }
+            @Override public void onInject(V8JavaClassInterceptorContext context, List object) { }
+            @Override public void onExtract(V8JavaClassInterceptorContext context, List object) { }
+        };
+
+        V8JavaAdapter.injectClass(HashMap.class, interceptor, v8);
+        V8JavaAdapter.injectClass(ArrayList.class, listInterceptor, v8);
+
+        final Map<String, Object> mapToExportToJs = new HashMap<String, Object>();
+
+        final String stringKey = "stringKey";
+        final String stringValue = "stringValue";
+        mapToExportToJs.put(stringKey, stringValue);
+
+        final List<String> listToExportToJs = new ArrayList<String>();
+        final String list1stElement = "myElement";
+        listToExportToJs.add(list1stElement);
+
+        final String listKey = "listKey";
+        mapToExportToJs.put(listKey, listToExportToJs);
+
+        final RawMapHolder mapProvider = new RawMapHolder();
+        mapProvider.setMap(mapToExportToJs);
+
+        final String mapProviderJsName = "mapProvider";
+        V8JavaAdapter.injectObject(mapProviderJsName, mapProvider, v8);
+
+        final String holderJsName = "holder";
+        AtomicReference<Object> holder = new AtomicReference<Object>();
+        V8JavaAdapter.injectObject(holderJsName, holder, v8);
+
+
+        //check customized transformation behaviour
+        v8.executeVoidScript("var exportedMap = mapProvider.getMap(); var value = exportedMap['" + stringKey + "']; holder.set(value)");
+        Assert.assertEquals(stringValue, holder.get());
+
+        v8.executeVoidScript("var exportedMap = mapProvider.getMap(); var value = exportedMap['" + listKey + "'][0]; holder.set(value)");
+        Assert.assertEquals(list1stElement, holder.get());
+
+        final RawListHolder listProvider = new RawListHolder();
+        listProvider.setList(listToExportToJs);
+
+        final String listProviderJsName = "listProvider";
+        V8JavaAdapter.injectObject(listProviderJsName, listProvider, v8);
+
+
+        v8.executeVoidScript("var exportedList = listProvider.getMap(); var value = exportedList[0]; holder.set(value)");
+        Assert.assertEquals(list1stElement, holder.get());
     }
 }
