@@ -90,11 +90,13 @@ public final class V8JavaAdapter {
         StringBuilder script = new StringBuilder();
         script.append("var ").append(name).append(" = new function() {");
 
+        boolean objectInjectionOverridden = false;
         // Attach interceptor.
         if (proxy.getInterceptor() != null) {
             //override injection if any
             final Object injectionOverride = proxy.getInterceptor().objectInjectorOverride(object);
-            if (injectionOverride == null) {
+            objectInjectionOverridden = injectionOverride != null;
+            if (!objectInjectionOverridden) {
                 script.append(proxy.getInterceptor().getConstructorScriptBody());
             } else {
                 final V8Value convertedToV8JavaObject;
@@ -117,8 +119,21 @@ public final class V8JavaAdapter {
         script.append("\n}; ").append(name).append(";");
 
         V8Object other = v8.executeObjectScript(script.toString());
-        String id = proxy.attachJavaObjectToJsObject(object, other);
+
+        String id;
+        if (!objectInjectionOverridden) {
+            id = proxy.attachJavaObjectToJsObject(object, other);
+        } else {
+            /**
+             * There is no need to attach v8 object, which is result of overridden java object injection:
+             *  - it's either completely self-contained new V8 object
+             *  - or if it's normal java object - it's already attached in .translateJavaArgumentToJavascript() method.
+             */
+            id = name;
+        }
+
         other.release();
+
         return id;
     }
 
