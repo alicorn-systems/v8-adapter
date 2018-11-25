@@ -971,7 +971,6 @@ public class V8JavaAdapterTest {
         V8JavaAdapter.injectObject(holderJsName, holder, v8);
 
 
-        //check customized transformation behaviour
         v8.executeVoidScript("var exportedMap = mapProvider.getMap(); var value = exportedMap['" + stringKey + "']; holder.set(value)");
         Assert.assertEquals(stringValue, holder.get());
 
@@ -987,5 +986,45 @@ public class V8JavaAdapterTest {
 
         v8.executeVoidScript("var exportedList = listProvider.getMap(); var value = exportedList[0]; holder.set(value)");
         Assert.assertEquals(list1stElement, holder.get());
+    }
+
+
+    @Test
+    public void resultingV8Object_Of_OverriddenJavaInstanceInjection_ShouldHas_Fresh_ContentWhenReadBackInJava() {
+        final V8JavaClassInterceptor interceptor = new V8JavaClassInterceptor<Map>() {
+            @Override
+            public Object objectInjectorOverride(Map object) {
+                return V8ObjectUtils.toV8Object(v8, object);
+            }
+
+            @Override public String getConstructorScriptBody() { return null; }
+            @Override public void onInject(V8JavaClassInterceptorContext context, Map object) { }
+            @Override public void onExtract(V8JavaClassInterceptorContext context, Map object) { }
+        };
+
+
+        V8JavaAdapter.injectClass(HashMap.class, interceptor, v8);
+
+        final Map<String, Object> mapToExportToJs = new HashMap<String, Object>();
+
+        final String stringKey = "stringKey";
+        final String stringValue = "stringValue";
+        final String newStringValue = "stringValueNew";
+        mapToExportToJs.put(stringKey, stringValue);
+
+        final RawMapHolder mapProvider = new RawMapHolder();
+        mapProvider.setMap(mapToExportToJs);
+
+        final String mapProviderJsName = "mapProvider";
+        V8JavaAdapter.injectObject(mapProviderJsName, mapProvider, v8);
+
+        final String holderJsName = "holder";
+        AtomicReference<Object> holder = new AtomicReference<Object>();
+        V8JavaAdapter.injectObject(holderJsName, holder, v8);
+
+        v8.executeVoidScript("var exportedMap = mapProvider.getMap(); exportedMap['" + stringKey + "'] = '" + newStringValue + "'; holder.set(exportedMap)");
+        final Map mapReadBackFromV8Object = (Map) holder.get();
+        Assert.assertNotEquals(mapToExportToJs, mapReadBackFromV8Object);
+        Assert.assertEquals(newStringValue, mapReadBackFromV8Object.get("stringKey"));
     }
 }
