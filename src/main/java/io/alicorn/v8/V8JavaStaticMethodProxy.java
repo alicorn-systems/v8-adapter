@@ -42,7 +42,7 @@ class V8JavaStaticMethodProxy extends V8JavaMethodProxy implements JavaCallback 
 
         //Invoke the method.
         try {
-            return V8JavaObjectUtils.translateJavaArgumentToJavascript(coercedMethod.invoke(coercedArguments), V8JavaObjectUtils.getRuntimeSarcastically(receiver), cache);
+            return V8JavaObjectUtils.translateJavaArgumentToJavascript(coercedMethod.invoke(null,coercedArguments), V8JavaObjectUtils.getRuntimeSarcastically(receiver), cache);
         } catch (IllegalAccessException e) {
             throw new IllegalArgumentException("Method received invalid arguments!");
         } catch (InvocationTargetException e) {
