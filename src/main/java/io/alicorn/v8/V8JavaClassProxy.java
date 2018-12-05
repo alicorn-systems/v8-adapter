@@ -35,7 +35,8 @@ final class V8JavaClassProxy implements JavaCallback {
 
     //Methods owned by this proxy.
     private final Map<String, V8JavaStaticMethodProxy> staticMethods = new HashMap<String, V8JavaStaticMethodProxy>();
-    private final Map<String, V8JavaInstanceMethodProxy> instanceMethods = new HashMap<String, V8JavaInstanceMethodProxy>();
+    /**Package access for tests only. Otherwise private. **/
+    final Map<String, V8JavaInstanceMethodProxy> instanceMethods = new HashMap<String, V8JavaInstanceMethodProxy>();
 
     // Getters and setters owned by this proxy.
     // These overlap with the methods defined above.
