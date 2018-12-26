@@ -13,6 +13,7 @@ import org.junit.*;
 import org.junit.rules.ExpectedException;
 
 import java.io.File;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1026,5 +1027,20 @@ public class V8JavaAdapterTest {
         final Map mapReadBackFromV8Object = (Map) holder.get();
         Assert.assertNotEquals(mapToExportToJs, mapReadBackFromV8Object);
         Assert.assertEquals(newStringValue, mapReadBackFromV8Object.get("stringKey"));
+    }
+    @Test
+    public void shouldRunStaticMethodWithParams() {
+    	//build a random string for test
+    	String generatedString = "Hellow World";
+    	
+    	V8JavaAdapter.injectClass("StaticClass",StaticClass.class, v8);
+    	v8.executeScript("function shouldRunStaticMethodWithParams(param){return StaticClass.paramsReturn(param);}");
+    	v8.executeJSFunction("shouldRunStaticMethodWithParams", generatedString);
+    	Assert.assertEquals(generatedString, v8.executeJSFunction("shouldRunStaticMethodWithParams", generatedString));
+    }
+    static class StaticClass{
+    	public static <T> T paramsReturn(T obj) {
+    		return obj;
+    	}
     }
 }
