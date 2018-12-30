@@ -305,6 +305,9 @@ public final class V8JavaObjectUtils {
             return jsFunctionResult;
         }
 
+        @Override protected void onJsInvoked() {
+            //the class can be called back in java 8 with forEach method
+        }
         protected Object invokeJsFunctionUsingMethodArgs(Method method, Object[] args) throws Throwable {
             try {
                 final boolean varArgsOnlyMethod = method.isVarArgs() && method.getParameterTypes().length == 1;
@@ -690,17 +693,51 @@ public final class V8JavaObjectUtils {
         if (argument instanceof V8Value) {
             if (argument instanceof V8Function) {
                 final V8Function v8ArgumentFunction = (V8Function) argument;
-
+                int methodsCount = 0;
+                if(javaArgumentType.isInterface()) {
+                    Method[] interfaceMethods = javaArgumentType.getMethods(); //we want the original methods, not the virtual methods
+                    Method[] objectMethods = Object.class.getMethods();
+                    for (int i = 0; i < interfaceMethods.length; i++) {
+                    	boolean isDefault = false;
+                    	// if(!interfaceMethods[i].isDefault()){ //java 8 or greater version
+                        try {
+                        	Method isDefaultCall = interfaceMethods[i].getClass().getMethod("isDefault");
+							//if((isDefaultCall != null && (boolean)isDefaultCall.invoke(interfaceMethods[i]))){
+	                    	if(interfaceMethods[i].isDefault()){ //java 8 or greater version
+								isDefault = true;
+							}
+						} catch (Exception e) {
+							// TODO maybe better error handling or just replace with java 1.8 version only
+						}
+                        if(!isDefault) {
+							Breakable:
+						    {
+						        for (int j = 0; j < objectMethods.length; j++) {
+						            if(objectMethods[j].equals(interfaceMethods[i])){
+						                break Breakable;
+						            }
+						        }
+						        methodsCount++;
+						    }
+	                    }
+                    }
+                }
                 //TODO: update check in case of java 8 upgrade:
-                if (javaArgumentType.isInterface() && javaArgumentType.getDeclaredMethods().length == 1) {
+                if (methodsCount == 1) {
                     //Create a proxy class for the functional interface that wraps this V8Function.
                     final V8CallBackFunctionInvocationHandler handler;
+                    ClassLoader loader = javaArgumentType.getClassLoader();
                     if (!javaArgumentType.isAnnotationPresent(JSListener.class)) {
                         handler = new V8CallBackFunctionInvocationHandler(receiver, v8ArgumentFunction, cache);
                     } else {
                         handler = new V8ListenerFunctionInvocationHandler(receiver, v8ArgumentFunction, cache);
                     }
-                    return Proxy.newProxyInstance(javaArgumentType.getClassLoader(), new Class[] { javaArgumentType, Releasable.class }, handler);
+                    if(loader != null) {//sometimes this method was thrown with default java interfaces. (Comsumer in list.forEach() for example)
+                    	return Proxy.newProxyInstance(loader, new Class[] { javaArgumentType,Releasable.class}, handler);
+                    }
+                    else {
+                        return Proxy.newProxyInstance(loader, new Class[] { javaArgumentType}, handler);
+                    }
                 } else if (V8Function.class == javaArgumentType) {
                     return v8ArgumentFunction.twin();
                 } else if (Object.class == javaArgumentType && isGcExecutorSpecified(receiver.getRuntime())) {

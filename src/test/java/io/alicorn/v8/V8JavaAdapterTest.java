@@ -480,15 +480,16 @@ public class V8JavaAdapterTest {
         Assert.assertEquals(sum, v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeCallBack(sumCallBack, " + one + ", " + two + ", " + three + ", " + four + ");"));
     }
 
+    //TODO: remove this test, this is no longer something to test because java 8 or later could recall the same method (list.forEach for example)
     @Test
-    public void shouldThrowIfFunctionCallBackArgumentsIsCalledTwice() {
+    public void shouldNotThrowIfFunctionCallBackArgumentsIsCalledTwice() {//should no longer throw
         final int one = 1;
         final int two = 2;
         final int three = 3;
         final int sum = one + two + three;
 
-        thrown.expect(V8ScriptExecutionException.class);
-        thrown.expectMessage(StringContains.containsString("Object released"));
+        //thrown.expect(V8ScriptExecutionException.class);
+        //thrown.expectMessage(StringContains.containsString("Object released"));
 
         //should throw here
         final Object actualResult = v8.executeScript("var x = new Foo(0); var sumCallBack = function(arg1, arg2, arg3) { return arg1 + arg2 + arg3; }; x.invokeCallBackTwice(sumCallBack, " + one + ", " + two + ", " + three + ");");
@@ -1027,6 +1028,40 @@ public class V8JavaAdapterTest {
         final Map mapReadBackFromV8Object = (Map) holder.get();
         Assert.assertNotEquals(mapToExportToJs, mapReadBackFromV8Object);
         Assert.assertEquals(newStringValue, mapReadBackFromV8Object.get("stringKey"));
+    }
+    @Test
+    public void shouldHandleDefaultMethodsAndCall() {
+    	if("1.8.0".compareTo(System.getProperty("java.version")) <= 0) {
+    		//java 8+ test written in a java 7 compaditable way
+    		LinkedList list = new LinkedList();
+    		for(int i = 0;i < 10;i++) {
+    			final int j = i;
+    			list.add(
+    					new Object() {//dummy object
+    						private int hidden = j;
+    						public void add() {
+    							hidden++;
+    						}
+    						public String toString(){
+    							return ""+hidden;
+    						}
+    					}
+				);
+    		}
+    		//andThen would cause this to fail IF default methods aren't accounted for
+    		V8JavaAdapter.injectObject("lists", list, v8);
+    		//v8.executeScript("list.add('e');");
+    		v8.executeScript("lists.forEach(function(e){e.add()});");
+			for(int i = 0; i < list.size();i++) {
+				Assert.assertEquals(""+(i+1),list.get(i).toString());
+			}
+    		
+    	}
+    	else {
+    		//java 7- test
+    		//TODO a good java 7 function test, I don't think its a thing .
+    	}
+    	
     }
     @Test
     public void shouldRunStaticMethodWithParams() {
